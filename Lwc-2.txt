@@ -1,0 +1,410 @@
+<template>  
+    <div class="slds-box slds-theme_default">  
+        <div class="slds-theme_default">
+            <div class="slds-p-around_medium">
+                <lightning-progress-indicator type="base" current-step={selectedStep}>
+                    <lightning-progress-step label="Stage1" value="account" onclick={selectStepAccount}></lightning-progress-step>
+                    <lightning-progress-step label="Stage2" value="contact" onclick={selectStepContact}></lightning-progress-step>
+                    <lightning-progress-step label="Stage3" value="opportunity" onclick={selectStepOpportunity}></lightning-progress-step>
+
+                    <lightning-progress-step label="Stage4" value="step4" onclick={selectStep4}></lightning-progress-step>
+                    <lightning-progress-step label="Stage5" value="5" onclick={selectStep5}></lightning-progress-step>
+                    <lightning-progress-step label="Stage6" value="6" onclick={selectStep6}></lightning-progress-step>
+
+                      <lightning-progress-step label="Stage7" value="7" onclick={selectStep7}></lightning-progress-step>
+                    <lightning-progress-step label="Stage8" value="8" onclick={selectStep8}></lightning-progress-step>
+                    <lightning-progress-step label="Stage9" value="9" onclick={selectStep9}></lightning-progress-step>
+               
+                    <lightning-progress-step label="File Upload" value="FileUpload" onclick={selectStepFileUpload}></lightning-progress-step>
+                </lightning-progress-indicator>
+    
+               
+            </div>
+            </div>
+
+            <template if:true={hasError}>
+                <div class="slds-text-color_error">Requried Fields To Be Filled</div>
+            </template>
+
+           
+      <template if:true={isAccountStep}>
+        <div class="form-group">
+            <lightning-input type="text" label="Name" onchange={onNameChange}></lightning-input> 
+        </div>
+        <div class="form-group">
+            <template if:true={TypePicklistValues.data}>
+                <lightning-combobox name="Type"
+                                    label="Type"
+                                    value={Type}
+                                    placeholder="-Select-"
+                                    options={TypePicklistValues.data.values}
+                                    onchange={onTypeChange} >
+                </lightning-combobox>
+          </template>
+        </div>
+        <div class="form-group">
+            <lightning-input type="tel" label="Phone" onchange={onPhoneChange}></lightning-input> 
+        </div>
+        <div class="form-group">
+            <lightning-input type="Number" label="AccountNumber" onchange={onAccountNumChange}></lightning-input> 
+        </div>
+      </template>
+      
+      <template if:true={isContactStep}>
+        <div class="form-group">
+            <template if:true={IndustryPicklistValues.data}>
+                <lightning-combobox name="Industry"
+                                    label="Industry"
+                                    value={Industry}
+                                    placeholder="-Select-"
+                                    options={IndustryPicklistValues.data.values}
+                                    onchange={onIndustryChange} >
+                </lightning-combobox>
+          </template>
+        </div>
+        <div class="form-group">
+            <lightning-textarea name="input3" label="Description" onchange={onDescriptionChange}></lightning-textarea> 
+            </div>
+        <div class="form-group">
+            <template if:true={RatingPicklistValues.data}>
+                <lightning-combobox name="Rating"
+                                    label="Rating"
+                                    value={Rating}
+                                    placeholder="-Select-"
+                                    options={RatingPicklistValues.data.values}
+                                    onchange={onRatingChange} >
+                </lightning-combobox>
+          </template>
+        </div>
+        <div class="form-group">
+            <lightning-input type="text" label="Email__c" onchange={onEmailChange}></lightning-input>
+        </div>
+      </template>
+     
+      <template if:true={isOpportunityStep}>
+        <div class="form-group">
+            <lightning-input type="text" label="BillingCity" onchange={onBCityChange}></lightning-input>
+        </div>
+        <div class="form-group">
+            <lightning-input type="text" label="BillingState" onchange={onBStateChange}></lightning-input>
+        </div>
+        <div class="form-group">
+            <lightning-input type="text" label="BillingPostalCode" onchange={onBPostalChange}></lightning-input>
+        </div>
+        <div class="form-group">
+            <lightning-input type="text" label="BillingCountry" onchange={onBCountryChange}></lightning-input>
+        </div>
+
+      </template>
+
+
+
+    <template if:true={isStep4}>
+        <div class="form-group">
+            <lightning-input type="text" label="Account Site" onchange={onSiteChange}></lightning-input>
+        </div>
+        <div class="form-group">
+            <lightning-input type="Currency" label="Annual Revenue" onchange={onRevenueChange}></lightning-input>
+        </div>
+        <div class="form-group">
+            <lightning-input type="text" label="Einstein Account Tier" onchange={onTierChange}></lightning-input>
+        </div>
+        
+
+      </template>
+
+
+
+
+
+
+
+
+
+
+      <template if:true={isFileUpload}>
+        <div class="form-group">
+            <lightning-input type="file" onchange={onFileUpload} required name="uploadFile" label="Upload File">  
+            </lightning-input>  
+        </div>
+      </template>
+      
+        <div class="slds-m-vertical_medium slds-text-align_center">
+    <lightning-button label="Previous" onclick={previousStep}></lightning-button>
+    <lightning-button label="Save" onclick={saveContact}></lightning-button>
+    <lightning-button label="Next" onclick={nextStep}></lightning-button>
+</div>
+    </div>  
+  </template>
+  
+  
+=============================================================================================================================================
+
+import { LightningElement, track,wire } from 'lwc';  
+import saveFile from '@salesforce/apex/contentController.saveFile';  
+import { NavigationMixin } from 'lightning/navigation';  
+import { ShowToastEvent } from 'lightning/platformShowToastEvent';  
+const MAX_FILE_SIZE = 100000000; //10mb  
+import { getObjectInfo, getPicklistValues } from "lightning/uiObjectInfoApi";
+import ACCOUNT_OBJECT from "@salesforce/schema/Account";
+import RATING_FIELD from "@salesforce/schema/Account.Rating";
+import INDUSTRY_FIELD from "@salesforce/schema/Account.Industry";
+import TYPE_FIELD from "@salesforce/schema/Account.Type";
+
+export default class ExperienceSiteLwc extends NavigationMixin(LightningElement) {
+   
+   @track error;
+   @track selectedStep = 'account';
+  @track name;  
+  @track phone;  
+  @track accNumber; 
+  @track email;
+  @track BillingCity;
+  @track BillingState;
+  @track BillingPostalCode;
+  @track BillingCountry;
+  @track Type;
+  @track Rating;
+  @track Industry;
+  @track description;  
+
+  uploadedFiles = []; file; fileContents; fileReader; content; fileName  
+
+ 
+
+   @wire(getObjectInfo, { objectApiName: ACCOUNT_OBJECT })
+   objectInfo;
+
+   @wire(getPicklistValues, { recordTypeId: '$objectInfo.data.defaultRecordTypeId', fieldApiName: INDUSTRY_FIELD})
+   IndustryPicklistValues;
+
+   @wire(getPicklistValues, { recordTypeId: '$objectInfo.data.defaultRecordTypeId', fieldApiName: TYPE_FIELD})
+   TypePicklistValues;
+
+   @wire(getPicklistValues, { recordTypeId: '$objectInfo.data.defaultRecordTypeId', fieldApiName: RATING_FIELD})
+   RatingPicklistValues;
+
+  onNameChange(event) {  
+    this.name = event.detail.value;  
+  }  
+  onTypeChange(event) {  
+    this.Type = event.detail.value;  
+  }  
+  onPhoneChange(event) {  
+    this.phone = event.detail.value;  
+  }  
+  onAccountNumChange(event) {  
+    this.accNumber = event.detail.value;  
+  }  
+
+onIndustryChange(event) {  
+   this.Industry = event.detail.value;  
+ }  
+ onDescriptionChange(event) {  
+   this.description = event.detail.value;  
+ }  
+ onRatingChange(event) {  
+   this.Rating = event.detail.value;  
+ }  
+ onEmailChange(event) {  
+   this.email = event.detail.value;  
+ }  
+
+
+
+ onBCityChange(event) {  
+   this.BillingCity = event.detail.value;  
+ }  
+ onBStateChange(event) {  
+   this.BillingState = event.detail.value;  
+ }  
+ onBPostalChange(event) {  
+   this.BillingPostalCode = event.detail.value;  
+ }  
+ onBCountryChange(event) {  
+   this.BillingCountry = event.detail.value;  
+ }  
+
+ onSiteChange(event){
+   this.Site = event.detail.value; 
+ }
+
+  onFileUpload(event) {  
+    if (event.target.files.length > 0) {  
+      this.uploadedFiles = event.target.files;  
+      this.fileName = event.target.files[0].name;  
+      this.file = this.uploadedFiles[0];  
+      if (this.file.size > this.MAX_FILE_SIZE) {  
+        alert("File Size Can not exceed" + MAX_FILE_SIZE);  
+      }  
+    }  
+  }  
+  saveContact() {  
+    this.fileReader = new FileReader();  
+    this.fileReader.onloadend = (() => {  
+      this.fileContents = this.fileReader.result;  
+      let base64 = 'base64,';  
+      this.content = this.fileContents.indexOf(base64) + base64.length;  
+      this.fileContents = this.fileContents.substring(this.content);  
+      this.saveFile();  
+    });  
+    this.fileReader.readAsDataURL(this.file);  
+  }  
+  saveFile() {  
+      console.log('Saving record...');
+    console.log('Account:', this.name, this.Type, this.phone, this.accNumber);
+    console.log('File:', this.fileContents, this.fileName);
+    var acc = {  
+      'sobjectType': 'Account',  
+      'Name': this.name,  
+      'Type': this.Type,  
+      'Phone': this.phone,  
+      'AccountNumber': this.accNumber,
+      'Industry' : this.Industry,
+      'Description' : this.description,
+      'Rating' : this.Rating,
+      'Email__c' : this.email,
+      'BillingCity' : this.BillingCity,
+      'BillingState' : this.BillingState,
+      'BillingPostalCode' : this.BillingPostalCode,
+      'BillingCountry' : this.BillingCountry 
+    }  
+    saveFile({  
+       accountRec: acc,  
+      file: encodeURIComponent(this.fileContents),  
+      fileName: this.fileName  
+    })  
+      .then(accId => {  
+        if (accId) {  
+          this.dispatchEvent(  
+            new ShowToastEvent({  
+              title: 'Success',  
+              variant: 'success',  
+              message: 'Account Successfully created',  
+            }),  
+          );  
+          this[NavigationMixin.Navigate]({
+           type: 'standard__recordPage',
+           attributes: {
+               recordId: accId,
+               objectApiName: 'Account',
+               actionName: 'view'
+           }
+       });  
+        }  
+      }).catch(error => {  
+        console.log('error ', error);  
+      });  
+  }  
+
+  selectStepAccount() {
+   this.selectedStep = 'account';
+}
+
+selectStepContact() {
+   this.selectedStep = 'contact';
+}
+
+selectStepOpportunity() {
+   this.selectedStep = 'opportunity';
+}
+
+selectStep4() {
+   this.selectedStep = 'step4';
+}
+
+selectStepFileUpload(){
+   this.selectedStep = 'FileUpload';
+}
+
+get isAccountStep() {
+   return this.selectedStep === 'account';
+}
+
+get isContactStep() {
+   return this.selectedStep === 'contact';
+}
+
+get isOpportunityStep() {
+   return this.selectedStep === 'opportunity';
+}
+
+get isStep4() {
+   return this.selectedStep === 'step4';
+}
+
+
+get isFileUpload() {
+   return this.selectedStep === 'FileUpload';
+}
+
+isAccountStepValid() {
+   
+   return !!this.name && !!this.Type && !!this.phone && !!this.accNumber; // Return true if the name field is not empty, otherwise return false 
+}
+
+isContactStepValid() {
+   
+   return !!this.Industry && !!this.description && !!this.Rating && !!this.email; // Return true if the phone field is not empty, otherwise return false
+}
+
+isOpportunityStepValid() {
+  
+   return !!this.BillingCity && !!this.BillingState && !!this.BillingPostalCode && !!this.BillingCountry; // Return true if the email field is not empty, otherwise return false
+}
+
+nextStep() {
+   if (this.selectedStep === 'account') {
+       if (!this.isAccountStepValid()) {
+           this.hasError = true;
+           return;
+       }
+       this.selectedStep = 'contact';
+       this.hasError = false;
+   } else if (this.selectedStep === 'contact') {
+       if (!this.isContactStepValid()) {
+           this.hasError = true;
+           return;
+       }
+       this.selectedStep = 'opportunity';
+       this.hasError = false;
+   } else if (this.selectedStep === 'opportunity') {
+       if (!this.isOpportunityStepValid()) {
+           this.hasError = true;
+           return;
+       }
+       this.selectedStep = 'FileUpload';
+       this.hasError = false;
+   }
+}
+
+previousStep() {
+   if (this.selectedStep === 'contact') {
+       this.selectedStep = 'account';
+   } else if (this.selectedStep === 'opportunity') {
+       this.selectedStep = 'contact';
+   } else if (this.selectedStep === 'FileUpload') {
+       this.selectedStep = 'opportunity';
+   }
+}
+}
+
+=======================================================================================================================================================
+
+<?xml version="1.0"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+	<apiVersion>57.0</apiVersion>
+	<isExposed>true</isExposed>
+	<targets>
+		<target>lightning__RecordPage</target>
+		<target>lightning__AppPage</target>
+		<target>lightning__HomePage</target>
+		<target>lightning__RecordAction</target>
+		<target>lightningCommunity__Page</target>
+		<target>lightningCommunity__Default</target>
+		<target>lightningCommunity__Page_Layout</target>
+		<target>lightningCommunity__Theme_Layout</target>
+	</targets>
+</LightningComponentBundle>
+
+================================================================================================  
