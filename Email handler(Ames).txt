@@ -1,0 +1,2431 @@
+public class EmailMessageHandler {
+    List<Id> cIds= new List<Id>();
+    public void onBeforeInsert(List<EmailMessage> eMailListObj)
+    {  
+        string strFirstName,strLastName,strEmail,strPhone,strCompany,strAddress,strAddress2,strCity,strState,strCountry, strComment;
+        string strBrand,fromaddress,lName,fName,strBLine,NameString,strZip;
+        
+		//Custom metadata types are queried to get regular expressions and body formatter strings
+		
+        List<EmailBodyFormatter__mdt> bodyForatter = [select bodyFormatter__c from EmailBodyFormatter__mdt];
+        string bodyFormatter = bodyForatter[0].bodyFormatter__c;
+        
+        List<ETCNameRegex__mdt> NameReg = [select nameRegex__c from ETCNameRegex__mdt];
+        string nameregex= NameReg[0].nameRegex__c;
+        
+        List<ETCFirstNameRegex__mdt> FirstNameReg = [select firstnameRegex__c from ETCFirstNameRegex__mdt];
+        string firstnameRegex= FirstNameReg[0].firstnameRegex__c;  
+         
+
+        List<ETCLastNameRegex__mdt> LastNameReg= [select lastnameRegex__c from ETCLastNameRegex__mdt];
+        string lastnameRegex= LastNameReg[0].lastnameRegex__c;
+        
+        List<ETCPhoneRegex__mdt> PhoneReg= [select phoneRegex__c from ETCPhoneRegex__mdt];
+        string phoneRegex= PhoneReg[0].phoneRegex__c;
+        
+        List<ETCCompanyRegex__mdt> CompanyReg= [select companyRegex__c from ETCCompanyRegex__mdt];
+        string companyRegex= CompanyReg[0].companyRegex__c;  
+        
+        
+        List<ETCAddressRegex__mdt> AddressReg= [select addressRegex__c from ETCAddressRegex__mdt];
+        string addressRegex= AddressReg[0].addressRegex__c;
+        
+        List<ETCAddress2Regex__mdt> Address2Reg= [select address2Regex__c from ETCAddress2Regex__mdt];
+        string address2Regex= Address2Reg[0].address2Regex__c;
+        
+        
+        List<ETCCityRegex__mdt> CityReg= [select cityRegex__c from ETCCityRegex__mdt];
+        string cityRegex= CityReg[0].cityRegex__c;
+       
+        
+        List<ETCStateRegex__mdt> StateReg= [select stateRegex__c from ETCStateRegex__mdt];
+        string stateRegex= StateReg[0].stateRegex__c;
+        
+        List<ETCZipRegex__mdt> ZipReg= [select zipregex__c from ETCZipRegex__mdt];
+        string zipRegex= ZipReg[0].zipregex__c;
+    
+        List<ETCcomments__mdt> CommentsReg= [select commentsRegex__c from ETCcomments__mdt];
+        string commentsregex= CommentsReg[0].commentsRegex__c; 
+
+        String strCategory = 'New Order';
+        string strSubCategory; 
+        String val; 
+           
+       
+        string emailregexstr = '((?i)(Email:|Email|Mail|Mail:))';   //This string variable holds a regex pattern designed to match different variations of the word
+        //Before insert logic
+        //Get parent cases of incoming emails    
+        for(EmailMessage e : eMailListObj){     //This loop iterates over each EmailMessage object in the provided list eMailListObj.    
+        if(e.Incoming) {			//This condition checks if the email message is incoming. The Incoming field is a boolean indicating whether the email was received rather than sent.
+            cIds.add(e.ParentId);	// If the email is incoming, the ID of the parent record(Case)  is added to the list cIds	
+            system.debug('parentid'+cIds);
+            }
+        } 
+        Map<Id,Case> lCases  =  new Map<Id,Case>([SELECT Id,AccountId,Recursive__c,Brand__c  FROM CASE WHERE Id IN :cIds]); //queries Case records with IDs in the cIds list 
+        //caseRec.ContactId = contactId;
+        List<Case> cased2Upd = new List<Case>(); //A list cased2Upd is initialized to hold Case records that need to be updated.
+        
+        
+        for(EmailMessage emsg : eMailListObj){ 			//This loop iterates over each EmailMessage object in eMailListObj
+            if(emsg.Incoming){   //If the email is incoming (emsg.Incoming is true), the parent Case record is retrieved from lCases using the email's ParentId
+                system.debug('incoming siri'+emsg.Incoming+'///////////'+PhoneReg);
+				
+                Case crecursive = lCases.get(emsg.ParentId);        
+                System.debug('RECUSIVECALL'+crecursive);
+                if(!System.Test.isRunningTest()){   //This block ensures the logic doesn’t run recursively, potentially causing an infinite loop. If the Recursive__c field on the Case is true, the method returns early (unless a test is running)
+                    if(crecursive.Recursive__c == true){   
+                        return;
+                    }
+                }
+                
+                system.debug(emsg.FromAddress + '###incoming email : ' + emsg.ToAddress);
+                
+                fromaddress = emsg.FromAddress;
+                try{
+                    if(emsg.FromName!=null){         //The FromName field is split into first name (fName) and last name (lName) if it's not null.  
+                        lName = emsg.FromName.split(' ')[1];
+                        fName = emsg.FromName.split(' ')[0];
+                    }
+                }
+                Catch(Exception e){
+                    System.debug('EEEEEEEE'+e.getmessage());
+                }
+                system.debug('FromName :'+emsg.FromName);
+                system.debug('FromAddress :'+emsg.FromAddress);
+                system.debug('ParentId :'+emsg.ParentId);
+                system.debug('Subject :'+emsg.Subject);
+                system.debug('ToAddress :'+emsg.ToAddress);
+                system.debug('CcAddressCcAddress:'+emsg.CcAddress);
+                system.debug('BccAddressBccAddress :'+emsg.BccAddress);
+                system.debug('TextBody :'+emsg.TextBody);
+                system.debug('HtmlBody :'+emsg.HtmlBody);
+                system.debug('Headers :'+emsg.Headers);
+                system.debug('bodyformatter :' + bodyFormatter);
+                
+                //removing unwanted data
+                string strbody = EmailBodyFormating(emsg.TextBody, bodyFormatter);  //The email body (emsg.TextBody) is formatted using the EmailBodyFormating method and a bodyFormatter string.
+                strbody = strbody.replaceAll('http.*?\\s', ''); //Any URLs in the email body are removed using a regex pattern 
+                strbody = strbody.replaceAll('\r\n|\n|\r',' '); //Line breaks in the email body are replaced with spaces 
+                //new code begin
+                
+                //First section
+                if(emsg.Subject != null){  //If the email subject is not null, it attempts to get the brand from the subject using the GetBrand method.
+                    strBrand = GetBrand(emsg.Subject);
+                    if(strBrand != null || string.isNotBlank(strComment)){
+                        strBrand = strBrand.trim(); //If a brand is found, it is trimmed of leading/trailing whitespace.
+                    }
+                    else{
+                        strBrand = GetBrand(strbody);
+                    }
+					
+                }else{  
+				               //If no brand is found in the subject, it attempts to get the brand from the formatted email body (strbody).
+                    if((string.isBlank(strBrand) || strBrand == null) && (string.isNotBlank(strComment)||strComment != null))
+                        strBrand = GetBrand(strComment);
+                    if(string.isBlank(strBrand))
+                        strBrand = GetBrand(strbody);
+                }
+                
+                if(string.isBlank(strBrand) || strBrand == null) //If no brand was found from the subject or body, it tries to determine the brand using a keyword-based method (GetBrandByKeyWords).
+                {
+                    strBrand = GetBrandByKeyWords(strbody);
+                }
+                
+                //if email send to design@closetmaid.com OR design@ames.com
+				
+                if(System.label.IncomingToAddress != null){   //If a system label IncomingToAddress is not null, it splits this label into a list of email addresses.
+                    List<String> strToAddress = System.label.IncomingToAddress.split(';');                    
+                    for(String incomingToAddress:strToAddress){
+                        if(incomingToAddress == emsg.ToAddress || incomingToAddress == emsg.CcAddress ||
+                             emsg.ToAddress.contains(incomingToAddress) || 
+                             (emsg.CcAddress != null && emsg.CcAddress.contains(incomingToAddress))){  //It then checks if the ToAddress or CcAddress of the email matches any address in this list.                         
+                            strBrand = 'Closetmaid design'; //If a match is found, the brand is set to 'Closetmaid design'.
+
+                        }
+                    }
+                } 
+                    
+                if(string.isNotBlank(strBrand)){  //If a brand was determined, it gets the corresponding business line using the GetBLine method.
+                strBLine = GetBLine(strBrand); 
+                system.debug('business line selected --> ' + strBLine);
+                } 
+				
+                /*           
+                String searchStr;
+                searchStr = ParseEmail(strbody);
+                if(String.isBlank(searchStr) && string.isNotBlank(strComment))
+                {
+                    searchStr = ParseEmail(strComment);
+                    if(String.isBlank(searchStr) || searchStr == null)
+                    {
+                        searchStr = emsg.Subject;
+                    }
+                }*/
+				
+                String purchaseFromstr;
+                List<ETCPurchasedFrom__mdt> purfrom = [SELECT PurchasedFrom__c FROM ETCPurchasedFrom__mdt];   //A list of ETCPurchasedFrom__mdt custom metadata records is queried          
+                purchaseFromstr = PurchaseFrom(purfrom[0].PurchasedFrom__c,strbody);  //The PurchasedFrom__c field from the first record in the list is used to determine the purchase source from the email body using the PurchaseFrom method.
+                
+				if(string.isBlank(purchaseFromstr) && string.isNotBlank(strComment)) //If the purchase source is not found in the email body (strbody), it checks the strComment (if not blank) using the same PurchaseFrom method.
+                    purchaseFromstr = PurchaseFrom(purfrom[0].PurchasedFrom__c,strComment);  
+                if(string.isBlank(purchaseFromstr)) //If the purchase source is still not determined, it defaults to 'Other'
+                    purchaseFromstr = 'Other';              
+                
+                if(String.isNotBlank(strbody)) //The email body (strbody) is processed to determine the category using the GetCategory method.
+                {
+                    val = GetCategory(strbody);  
+                        if(String.isBlank(val) && String.isNotBlank(strComment)) //If the category is not found in the email body and strComment is not blank, it checks the strComment
+                            val = GetCategory(strComment);  
+                }
+                
+                if(String.isNotBlank(val) || val != null) //If val (the category) is not blank or null, it checks if it contains a pipe (|) character
+                {
+                   if(val.contains('|'))  //If val contains a pipe, it splits the string into an array using the pipe as the delimiter.
+                   {
+                       string[] str = val.split('\\|');                       
+                       if(str.size() > 0)
+                       {
+                          strCategory = str[0].trim().capitalize(); //The first part of the split string is trimmed and capitalized to become the strCategory.
+                          strSubCategory = str[1].trim().capitalize(); //The second part of the split string is trimmed and capitalized to become the strSubCategory.
+                       }
+                   }                       
+                }
+
+                //second section
+                //first name and last name
+                //name              
+                system.debug('name regex -->' + nameregex);
+                
+                NameString = ExtractAccount(strbody, nameregex, emailregexstr);
+                
+                if(string.isBlank(NameString) || NameString == null)
+                {
+                    NameString = ExtractAccount(strbody,nameregex,firstnameregex);
+                } 
+                if(string.isBlank(NameString) || NameString == null)
+                {
+                    NameString = ExtractAccount(strbody,nameregex,addressregex);
+                } 
+                if(string.isBlank(NameString) || NameString == null)
+                {
+                    NameString = ExtractAccount(strbody,nameregex,phoneRegex);
+                } 
+                if(string.isNotBlank(NameString) || NameString != null)
+                {
+                    if(NameString.containsIgnoreCase('Company:'))
+                    {
+                        NameString.removeStartIgnoreCase('Company:');
+                    }
+                    if(NameString.containsIgnoreCase('AMES'))
+                    {
+                        NameString.removeStartIgnoreCase('AMES');
+                    }
+                    if(NameString.containsIgnoreCase('phone'))
+                    {
+                        NameString.removeStartIgnoreCase('phone');
+                    }
+                    if(NameString.containsIgnoreCase('city'))
+                    {
+                        NameString.removeStartIgnoreCase('city');
+                    }
+                    if(NameString.containsIgnoreCase('zip'))
+                    {
+                        NameString.removeStartIgnoreCase('zip');
+                    }
+                    if(NameString.containsIgnoreCase('address'))
+                    {
+                        NameString.removeStartIgnoreCase('address');
+                    }
+                    if(NameString.contains(':'))
+                    {
+                        NameString.remove(':');
+                    }
+                }
+                
+                if(string.isNotBlank(NameString) && NameString != null && emsg.ToAddress == 'help@ames.com')
+                {
+                    try
+                    {
+                        string[] names = NameString.split(' ');
+                        if(names.size() > 1)
+                        {                           
+                            strFirstName =  names[1];
+                            strLastName = names[2];
+                            if(string.isNotBlank(strLastName) && strLastName != null)
+                            {
+                                if(strLastName.containsIgnoreCase('Email:'))
+                                {                                   
+                                    strLastName = strLastName.substringBefore('Email:');
+                                }
+                                else if(strLastName.containsIgnoreCase('mail'))
+                                   strLastName = strLastName.removeStartIgnoreCase('mail');
+                                else if(strLastName.containsIgnoreCase('mail:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('mail:');
+                                else if(strLastName.containsIgnoreCase('Address1:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('Address1:');
+                                else if(strLastName.containsIgnoreCase('Address2:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('Address2:');
+                                else if(strLastName.containsIgnoreCase('Address'))
+                                   strLastName = strLastName.removeStartIgnoreCase('Address');
+                                else if(strLastName.containsIgnoreCase('Phone:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('Phone:');
+                                else if(strLastName.containsIgnoreCase('Comapny:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('Company:');
+                                else if(strLastName.containsIgnoreCase('comments:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('comments:');
+                                else if(strLastName.containsIgnoreCase('zip:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('zip:');
+                                else if(strLastName.containsIgnoreCase('state:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('state:');
+                                else if(strLastName.Contains('Postalcode:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('Postalcode:');  
+                                 else if(strLastName.containsIgnoreCase('AMES'))
+                                   strLastName = strLastName.removeStartIgnoreCase('AMES');  
+
+                            }
+                            system.debug('fname ' + strFirstName);
+                            system.debug('lname ' + strLastName); 
+                            
+                        }                                       
+                        if(names.size() == 1)
+                        {
+                            strLastName = names[1];
+                        }                        
+                        if(string.isBlank(strLastName) || strLastName == null)
+                        {
+                            strLastName = names[1];
+                        }
+                    }
+                    Catch(Exception ex)
+                    {
+                        System.debug('exception occured in name block ' + ex.getMessage());
+                    }
+                }    
+				 system.debug('fname ' + strFirstName);
+                 system.debug('lname ' + strLastName);            
+               
+                
+                // first name
+                if(String.isBlank(strFirstName) || strFirstName == null)
+                {                                     
+                    strFirstName = ExtractAccount(strbody,firstnameregex,lastnameregex);                    
+                }           
+                
+                if(String.isBlank(strFirstName) || strFirstName == null)
+                {
+                    strFirstName = ExtractAccount(strbody,firstnameregex,emailregexstr);         
+                }
+                if(String.isBlank(strFirstName) || strFirstName == null)
+                {
+                    strFirstName = ExtractAccount(strbody,firstnameregex,companyregex);         
+                }
+                if(String.isBlank(strFirstName) || strFirstName == null)
+                {
+                    strFirstName = ExtractAccount(strbody,firstnameregex,addressregex);         
+                }
+                if(String.isNotBlank(strFirstName) || strFirstName != null)
+                {
+                    string str = getVal(emailregexstr,strFirstName);
+                    if(str != null)
+                    {
+                        if(strFirstName.contains('Email'))
+                        {
+                            strFirstName.removeStartIgnoreCase('Email');
+                        }
+                        if(strFirstName.contains(':'))
+                        {
+                            strFirstName.removeStartIgnoreCase(':');
+                        }
+                    }
+                }
+                                
+                // last name
+                if(String.isBlank(strLastName) || strLastName == null)
+                {                   
+                    strLastName = ExtractAccount(strbody,lastnameregex,phoneregex);
+                    if((string.isNotBlank(strLastName) && strLastName !=null) && strLastName.Contains('Last Name'))
+                    {
+                        strLastName = strLastName.removeStartIgnoreCase('Last Name');                        
+                    }
+                    if(string.isBlank(strLastName) || strLastName == null)
+                    {
+                      strLastName = ExtractAccount(strbody,lastnameregex,addressregex);
+                    }
+                    if(string.isBlank(strLastName) || strLastName == null)
+                    {
+                      strLastName = ExtractAccount(strbody,lastnameregex,companyregex);
+                    }
+                    if(string.isNotBlank(strLastName) || strLastName != null)
+                    {
+                        if(strLastName.containsIgnoreCase('Email:'))
+                        {                                   
+                            strLastName = strLastName.substringBefore('Email:');
+                        }
+                        if(strLastName.containsIgnoreCase('company'))
+                         {
+                             strLastName.removeStartIgnoreCase('company');
+                         }
+                        if(strLastName.containsIgnoreCase('phone'))
+                         {
+                             strLastName.removeStartIgnoreCase('phone');
+                         }
+                        if(strLastName.containsIgnoreCase('email'))
+                         {
+                             strLastName.removeStartIgnoreCase('email');
+                         }
+                         if(strLastName.contains(':'))
+                         {
+                             strLastName.removeStartIgnoreCase(':');
+                         }                        
+                    }
+                    
+                }  
+				list<string> lstEmail = new list<string>();
+                if(string.isNotBlank(strbody) && strbody != null && emsg.ToAddress == 'help@ames.com')
+                {
+                    Matcher m = Pattern.compile('[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+').matcher(strbody);
+                    while (m.find()) {
+						
+						lstEmail.add(m.group(0));
+						strEmail = lstEmail[0];
+						
+						system.debug('strEmail ===>> ' +strEmail);
+						system.debug('strEmail ===>> ' +lstEmail.add(m.group(0)));
+						system.debug('strEmail ===>> ' +lstEmail[0]);
+                                        
+                    }
+                }
+                else if(String.isBlank(strEmail) || strEmail == null)
+                {
+                    strEmail = emsg.FromAddress;
+                }
+                               
+                strPhone = ExtractAccount(strbody,phoneregex,companyregex);
+                if(string.isBlank(strPhone) || strPhone == null)
+                {
+                    strPhone = ExtractAccount(strbody,phoneregex,addressregex); 
+                }  
+                if(string.isBlank(strPhone) || strPhone == null)
+                {
+                    strPhone = ExtractAccount(strbody,phoneregex,zipregex); 
+                }  
+                if(string.isBlank(strPhone) || strPhone == null)
+                {
+                    strPhone = ExtractAccount(strbody,phoneregex,cityregex); 
+                } 
+                
+                if(string.isBlank(strPhone) || strPhone == null)
+                {
+                    strPhone = RetrieveCustomerData(strbody,phoneregex,'Topic:'); 
+                }                
+                if(string.isNotBlank(strPhone) && strPhone != null)
+                {
+                    Matcher matcher=Pattern.compile('([0-9]+)').matcher(strPhone);
+                         boolean foundmatch = matcher.find();
+                         if(foundmatch)
+                         {
+                             System.debug('phone'+matcher.group(1));
+                             strPhone = matcher.group(1);
+                         }
+                }
+                
+                strCompany = ExtractAccount(strbody,phoneregex,addressregex); 
+                if(string.isBlank(strCompany) || strCompany == null)
+                {
+                    strCompany = ExtractAccount(strbody,companyregex,commentsregex);  
+                }             
+                
+                if(string.isNotBlank(strCompany) && strCompany != null)
+                {
+                    if(strCompany.containsIgnoreCase('mail:'))
+                        strCompany = strCompany.substringBefore('mail:');
+                    else if(strCompany.containsIgnoreCase('Email:'))
+                        strCompany = strCompany.substringBefore('Email:');
+                    else if(strCompany.containsIgnoreCase('Address:'))
+                        strCompany = strCompany.substringBefore('Address:');
+                    else if(strCompany.containsIgnoreCase('Phone:'))
+                        strCompany = strCompany.substringBefore('Phone:');
+                    else if(strCompany.containsIgnoreCase('Postalcode:'))
+                        strCompany = strCompany.substringBefore('Postalcode:');
+                    else if(strCompany.containsIgnoreCase('Zip:'))
+                        strCompany = strCompany.substringBefore('Zip:');
+                    else if(strCompany.containsIgnoreCase('state:'))
+                        strCompany = strCompany.substringBefore('state:');
+                    else if(strCompany.containsIgnoreCase('country:'))
+                        strCompany = strCompany.substringBefore('Country:');
+                    else if(strCompany.containsIgnoreCase('comments:'))
+                        strCompany = strCompany.substringBefore('comments:');
+                    else if(strCompany.containsIgnoreCase('comment:'))
+                        strCompany = strCompany.substringBefore('comment:');
+                }
+                
+                strAddress = ExtractAccount(strbody,addressregex,commentsregex);
+                
+                if(strAddress == null)
+                     strAddress = ExtractAccount(strbody,addressregex,cityregex);
+                
+                if(string.isBlank(strAddress) || strAddress == null)
+                    strAddress = ExtractAccount(strbody,addressregex,address2regex);
+               
+                if(string.isBlank(strAddress) || strAddress == null)
+                    strAddress = ExtractAccount(strbody,addressregex,cityregex);
+                
+                if(string.isBlank(strAddress) || strAddress == null)
+                    strAddress = RetrieveCustomerData(strbody,addressregex,'Product Info');
+                
+                if(string.isBlank(strAddress) || strAddress == null)
+                    strAddress = RetrieveCustomerData(strbody,addressregex,'Home Phone Number');
+                
+                try
+                {
+                    if(string.isNotBlank(strAddress) || strAddress != null)
+                    {
+                       strAddress = strAddress.subStringBefore('Address 2'); //strAddress.substring(strAddress.indexOf(' ') + 10);
+                    }
+                }                
+                catch(Exception ex)
+                {
+                    system.debug('exception at address field ' + ex.getMessage());
+                }
+                                 
+                // Address2
+                strAddress2 = ExtractAccount(strbody,address2regex,commentsregex);
+                
+                try
+                {
+                    if(string.isNotBlank(strAddress2) || strAddress2 != null)
+                    {
+                        strAddress2 = strAddress2.substring(strAddress2.indexOf(' ') + 10);
+                    }
+                }                
+                catch(Exception ex)
+                {
+                    system.debug('exception at address2 field ' + ex.getMessage());
+                }
+                
+                
+                strCity = RetrieveCustomerData(strbody,cityregex);
+                
+                if(strCity == null)
+                strCity = RetrieveCustomerData(strbody,cityregex,'PostalCode:');
+                
+                if(string.isBlank(strCity) || strCity == null)
+                    strCity = RetrieveCustomerData(strbody,cityregex,'state:');                
+                
+                if(string.isBlank(strCity) || strCity == null)
+                    strCity = ExtractAccount(strbody,cityregex,zipregex);
+
+                if(string.isNotBlank(strCity) && strCity != null)
+                {
+                    strCity = strCity.substringBefore('\n');
+                    if(strCity.Contains('From:'))
+                        strCity = strCity.substringBefore('From:');
+                }
+              
+                 try
+                {
+                    if(string.isNotBlank(strCity) || strCity != null)
+                    {                       
+                        if(strCity.containsIgnoreCase('state:'))
+                        {                                   
+                            strCity = strCity.substringBefore('State:');
+                        }
+                        if(strCity.containsIgnoreCase('Zip:'))
+                        {                                   
+                            strCity = strCity.substringBefore('Zip:');
+                        }
+                        if(strCity.containsIgnoreCase('postal code'))
+                        {                                   
+                            strCity = strCity.substringBefore('Postal Code:');
+                        }
+                    }
+                }                
+                catch(Exception ex)
+                {
+                    system.debug('exception at address field ' + ex.getMessage());
+                }
+                
+                strZip= RetrieveCustomerData(strbody,zipRegex);
+                if(string.isBlank(strZip) || strZip == null)                
+                    strZip = RetrieveCustomerData(strbody,zipRegex, 'Country');
+                if(string.isNotBlank(strZip) && strZip != null)
+                {
+                    Matcher matcher=Pattern.compile('([0-9]{5})').matcher(strZip);
+                         boolean foundmatch = matcher.find();
+                         if(foundmatch)
+                         {
+                             strZip = matcher.group(1);
+                         } 
+                }
+                
+                
+                if((string.isBlank(strZip) ||strZip ==null)  && (string.isNotBlank(strAddress) || strAddress != null))
+                {
+                        Matcher matcher=Pattern.compile('([0-9]{5})').matcher(strAddress);
+                         boolean foundmatch = matcher.find();
+                         if(foundmatch)
+                         {
+                             strZip = matcher.group(1);
+                         }    
+                }                
+                if(string.isBlank(strZip) || strZip == null)
+                {
+                    strZip = ExtractAccount(strbody,stateregex, commentsregex);                    
+                }
+                
+                if(string.isNotBlank(strZip) && strZip != null)
+                    strZip = strZip.substringBefore('\n');                
+                
+                if(strPhone != null)
+                {
+                    if(strPhone.contains('+1'))
+                    {
+                        strPhone.remove('+1');
+                    }
+                }
+                if(strcompany!= null)                    
+                {
+                    if(strcompany.containsIgnoreCase('Company:'))
+                        strcompany = strcompany.replaceAll('Company:','');
+                    
+                    String invalidNumbers = '[0-9]+';
+                    strCompany = strCompany.replaceAll(invalidNumbers, '' );
+                }
+                
+                try
+                {                     
+                    if(strCity != null)
+                    {
+                        strCity = strCity.substring(0,strCity.indexOf(' '));
+                    }
+                }
+                Catch(Exception ex)
+                {
+                    System.debug('exception occured while getting city value ' + ex.getMessage());
+                }
+                
+                strState = null;
+                strCountry = 'United States';  
+                               
+                strComment = RetrieveCustomerData(strbody,commentsregex); 
+                
+                if((string.isBlank(strLastName) ||strLastName == null) && (string.isNotBlank(strFirstName) ||strFirstName != null))
+                {
+                    strLastName = strFirstName;
+                    strFirstName = '';
+                }
+                if((string.isBlank(strFirstName) || strFirstName == null) && (string.isBlank(strLastName) ||strLastName == null))
+                {
+                    try{
+                        if(emsg.FromName!=null){
+                            strFirstName = emsg.FromName.split(' ')[0];
+                            strLastName = emsg.FromName.split(' ')[1];
+                            System.debug('Since first name last name not found in the email body --> assigning from value :' + strFirstName +',' +strLastName);
+                        }
+                    }
+                    Catch(Exception e){
+                        System.debug('EEEEEEEE'+e.getmessage());
+                    }
+                } 
+				/*else if((string.isBlank(strFirstName) || strFirstName == null) && (string.isBlank(strLastName) ||strLastName == null) && (emsg.ToAddress == 'web@ames.com' || emsg.ToAddress == 'orders@ames.com' || emsg.ToAddress == 'pro@ames.com' || emsg.ToAddress == 'help@ames.com'))
+                {
+                    try{
+                        if(emsg.FromName!=null){
+                            strFirstName = emsg.FromName.split(' ')[0];
+                            strLastName = emsg.FromName.split(' ')[1];
+                            System.debug('Since first name last name not found in the email body --> assigning from value :' + strFirstName +',' +strLastName);
+                        }
+                    }
+                    Catch(Exception e){
+                        System.debug('EEEEEEEE'+e.getmessage());
+                    }
+                }*/
+                
+                if(string.isBlank(strEmail) || strEmail == null )
+                {
+                    strEmail = emsg.FromAddress;                    
+                    System.debug('Since email id did not found in the email body --> assigning from address value :' +strEmail);
+                } 
+                /*else{
+                    strEmail = emsg.FromAddress;
+                }*/
+                
+                System.debug('full customer data --> ' + strFirstName + '|' +strLastName + '|' +strEmail + '|' +strPhone + '|' +strAddress + '|' +strCity + '|' +strState + '|' +strZip);
+                //end region
+                                  
+                Case c = lCases.get(emsg.ParentId);
+				//Case c = new Case();
+                    
+                     system.debug('@@farooq --> before imag extension '+strEmail);
+                
+                    if(string.isNotBlank(strEmail) && strEmail != null)
+                    {
+                           if(strEmail.Contains('.png') ||
+                           strEmail.Contains('.jpg') ||
+                           strEmail.Contains('.jpeg') ||
+                          strEmail.Contains('.img'))
+                        {
+                            strEmail = emsg.FromAddress;
+                        }
+                        else
+                        {
+                          strEmail = strEmail.trim();
+                        }                       
+                     
+                    }
+                    system.debug('@@farooq -->email'+strEmail);
+                    if(string.isNotBlank(strFirstName) && strFirstName != null)
+                          strFirstName = strFirstName.trim();
+                    if(string.isNotBlank(strLastName) && strLastName != null)
+                          strLastName = strLastName.trim();
+                    if(string.isNotBlank(strPhone) && strPhone != null)
+                          strPhone = strPhone.trim();
+                    if(string.isNotBlank(strAddress) && strAddress != null)
+                          strAddress = strAddress.trim();
+                    if(string.isNotBlank(strAddress2) && strAddress2 != null)
+                          strAddress2 = strAddress2.trim();
+                    if(string.isNotBlank(strCity) && strCity != null)
+                          strCity = strCity.trim();
+                    if(string.isNotBlank(strState) && strState != null)
+                          strState = strState.trim();
+                    if(string.isNotBlank(strZip) && strZip != null)
+                          strZip = strZip.trim();
+                    if(string.isNotBlank(strcompany) && strcompany != null)
+                        strCompany = strCompany.trim();
+                          
+                    System.debug('inside account object :' + strEmail + ',' + strFirstName + ',' + strLastName);  
+					
+                    //if(c.AccountId == null) 
+					//{
+                    //if(string.isNotBlank(strEmail) && strEmail != null && ((string.isNotBlank(strFirstName) && strFirstName != null) || (string.isNotBlank(strFirstName) && strFirstName != null))) {
+                    c.AccountId = CreateRetrieveAccount(strEmail, strFirstName, strLastName, strPhone, strAddress, strAddress2, strCity, strState, strZip, strCountry);
+                    
+					system.debug(c.AccountId);
+                   
+                    try
+                    {
+                        /*
+                          if(strComment != null)
+                          {
+                              //searchStr = searchStr.substring(searchStr.indexOf(' ') + 5);
+                              //c.Knowledge_Search_Text__c = searchStr;
+                              //c.Knowledge_Search_Text__c = strComment;
+                          }
+                        */                         
+                          
+                              if(string.isNotBlank(strEmail))
+                                  c.SuppliedEmail = emsg.FromAddress;
+                            /*  else
+                                  c.SuppliedEmail = emsg.FromAddress;   */                
+                                   
+                                  c.Purchase_From__c = purchaseFromstr;
+                                  //if(String.isNotBlank(strCategory))
+                                    //c.Category__c = strCategory;
+                                  if(String.isNotBlank(strSubCategory))
+                                    c.Sub_Category__c = strSubCategory;
+                             
+                                  /*if(String.isNotBlank(strBrand))
+                                  {                                    
+                                        c.Brand__c = strBrand;                                      
+                                  }*/
+
+                                 if(String.isNotBlank(strBrand) && emsg.ToAddress == 'help@ames.com') {                                
+                                      c.Brand__c = strBrand;   
+                                      c.Category__c = strCategory;                                 
+                                 } else if(emsg.ToAddress == 'web@ames.com' || emsg.ToAddress == 'orders@ames.com' || emsg.ToAddress == 'pro@ames.com') {
+                                      if(c.Brand__c == ''){
+										 c.Brand__c = '';
+                                      } 
+									  system.debug('c.Brand__c ==> ' +c.Brand__c);
+                                      c.Category__c = strCategory;
+                                  }
+                                  
+                                  c.Company__c = strCompany;
+                                  c.Comments__c = strComment; 
+                                  //Add Brand and Businessline empty for Employee Order cases
+                                  if(emsg.Subject.contains(Label.Employee_Orders)||emsg.Subject.contains(Label.Employee_Order) ||
+                                    emsg.Subject.contains(Label.Employee_Orders_2)||emsg.Subject.contains(Label.Employee_Order_2)){
+                                        c.BusinessLine__c = '';
+                                        c.Brand__c = '';
+                                  } else{  
+                                      c.BusinessLine__c = strBLine;
+                                  }
+                                  c.Recursive__c = true;                            
+                                  system.debug('brand finalvalue saved :' + c.Brand__c );
+                              system.debug('business finalvalue saved :' + c.BusinessLine__c );
+                             cased2Upd.add(c);                        
+                    }
+                    catch(Exception ex)
+                    {
+                        system.debug('exception occured while updating case details-->' + ex.getMessage());
+                        system.debug('exception occured while updating case details-->' + ex.getStackTraceString());
+                    }
+                    
+            }
+        }
+      try
+      {
+       //updating cases and adding associate accounts     
+       System.debug('$$$$$$$$$$$'+cased2Upd);  
+       update(cased2Upd);
+       
+        
+      }
+      catch(DMLException dex)
+      {
+          system.debug('exception occured on main method while updating details ' + dex.getMessage());
+      }
+      catch(Exception ex)
+      {
+          system.debug('exception occured on main method while updating details ' + ex.getMessage());
+      }
+   }
+    
+    @TestVisible
+    Private String GetVal(String regex, String stringVal)
+    { 
+        String val;    
+        try
+        {                               
+            Matcher matcher=Pattern.compile(regex).matcher(stringVal);
+            boolean foundmatch = matcher.find();
+            if(foundmatch)
+            {
+                val = matcher.group(2);
+            }
+        }
+        Catch(Exception ex)
+        {            
+            System.debug('exception cause:' + ex.getCause());
+            System.debug('exception cause:' + ex.getMessage());
+        }
+        return val;
+    }
+    
+    @TestVisible
+    private string RetrieveCustomerData(string strbody, string regex, string stop)
+    {
+        string strValue;
+        try
+        {
+            Matcher matcher=Pattern.compile(regex).matcher(strbody);
+            boolean foundmatch = matcher.find();
+            if(foundmatch)
+            {
+                string val = matcher.group(2);
+                system.debug(val);                
+                strValue = strbody.substringBetween(val, stop);
+                system.debug(strValue);
+               
+            }
+        }
+        catch(Exception ex)
+        {
+            System.debug('exception occured in RetrieveCustomerData method: ' + ex.getMessage());
+            strValue = null;
+        }
+       
+        return strValue;
+    }
+    
+    @TestVisible
+    private string ExtractAccount(string strbody, string startregex, string endregex)
+    {
+         string val,strValue;
+        try
+        {           
+            Matcher matcher1=Pattern.compile(endregex).matcher(strbody);
+            boolean foundmatch1 = matcher1.find();
+            if(foundmatch1)
+            {
+                val = matcher1.group(2);                
+            }
+        
+            Matcher matcher=Pattern.compile(startregex).matcher(strbody);
+            boolean foundmatch = matcher.find();
+            if(foundmatch)
+            {
+                string val1 = matcher.group(2);
+                system.debug('first regex ' + val1);                
+                system.debug('val ' + val);
+                if(val == null || string.isBlank(val))
+                {                    
+                    strValue = strbody.substringAfter(val1);
+                    system.debug('str ' + strValue);                    
+                    system.debug('account field --> ' + strValue);
+                    strValue = strValue.substring(0,strValue.indexOf(' '));
+                    
+                }
+                else
+                {
+                    strValue = strbody.substringBetween(val1,val);                    
+                }                
+                system.debug('final value ' + strValue);
+            }
+        }
+        catch(Exception ex)
+        {
+            System.debug('exception occured in ExtractAccount method: ' + ex.getMessage());
+            strValue = null;
+        }
+        return strValue;
+        
+    }    
+
+    @TestVisible
+    private string GetBrand(string emailBody)
+    {
+        string match;
+        List<ETCBrands__mdt> brandsReg = [select Label,brands__c from ETCBrands__mdt];
+            for(ETCBrands__mdt brands : brandsReg)
+            { 
+                    try
+                    {   
+                        system.debug('brand regex ' + brands.brands__c);
+                                            
+                        Matcher  matcher = Pattern.compile(brands.brands__c).matcher(emailBody);   
+                      
+                        boolean foundmatch = matcher.find();        
+                        if(foundmatch)
+                        {
+                           return match = brands.Label.trim();                                                   
+                        }
+                    }
+                    Catch(Exception ex)
+                    { 
+                        System.debug('exception cause:' + ex.getMessage());            
+                    }
+            }
+        return match;
+    }
+
+    @TestVisible
+    private string GetBrandByKeyWords(string emailBody)
+    {
+        string match;
+        List<HomeOrgKeyword__mdt> keywords = [select Label,Keywords__c from HomeOrgKeyword__mdt];
+            for(HomeOrgKeyword__mdt brands : keywords)
+            { 
+                    try
+                    {   
+                        system.debug('brand regex ' + brands.Keywords__c);
+                        Matcher matcher=Pattern.compile(brands.Keywords__c).matcher(emailBody);
+                        boolean foundmatch = matcher.find();        
+                        if(foundmatch)
+                        {
+                           return match = brands.Label.trim();                                                   
+                        }
+                    }
+                    Catch(Exception ex)
+                    { 
+                        System.debug('exception cause:' + ex.getMessage());            
+                    }
+            }
+        return match;
+    }
+
+    @TestVisible
+    private string GetBLine(string emailBody)
+    {
+        string match;
+        List<BrandMapping__mdt> brandCol = [select Label, brandCollection__c from BrandMapping__mdt];
+        //string brandCollection= brandCol[0].brandCollection__c;
+        for(BrandMapping__mdt mapi: brandCol)
+        {
+            System.debug(mapi.brandCollection__c);
+             if(emailBody != null)
+                 emailBody = emailBody.trim();
+             Matcher matcher=Pattern.compile(mapi.brandCollection__c).matcher(emailBody);
+             boolean foundmatch = matcher.find();        
+             if(foundmatch)
+             {                 
+                 system.debug('business line -->' + mapi.Label);          
+                 return match = mapi.Label;
+             }
+        }
+        return match;
+    }
+    
+    @TestVisible
+    private string RetrieveCustomerData(string strbody, string regex)
+    {
+        string strValue;
+            Matcher matcher=Pattern.compile(regex).matcher(strbody);
+            boolean foundmatch = matcher.find();
+            if(foundmatch)
+            {
+                string val = matcher.group(2);
+                system.debug(val);
+                strValue = strbody.substringAfter(val);               
+            }
+        return strValue;
+    }
+    
+    @TestVisible
+    private string EmailBodyFormating(string strEmailBody, string bodyFormatter)
+    {        
+        string emailBody = strEmailBody;
+        if(String.isNotBlank(emailBody) && String.isNotBlank(bodyFormatter))
+        {
+            string[] formatters = bodyFormatter.split('\\|');
+            for(string formatter : formatters)
+            {
+                if(emailBody.Contains(formatter))
+                {
+                     emailBody = emailBody.substring(0, emailBody.indexOf(formatter));
+                     system.debug(emailBody);       
+                }
+            }
+        }
+        return emailBody;        
+    }
+
+    /*@TestVisible
+    private Id CreateAccount(String emailId, String fName, String lName, string phone,
+                             string address,string address2,string city, 
+                             string state,string postalcode, string country)
+    {
+        
+        Account account = new Account();
+        try
+        {           
+            if(fName == lName){
+                account.LastName = lName;
+            }else{
+                account.FirstName = fName;
+                account.LastName = lName;
+            }
+            account.PersonEmail = emailId;
+            if(string.isNotBlank(phone))
+                account.Phone = phone;        
+            if(address2 != null)           
+                account.ShippingStreet = address + ',' + address2;           
+            else
+                account.ShippingStreet = address;
+            
+            if(city != null)
+            account.ShippingCity = city;
+            if(state != null)
+            account.ShippingState = state;
+            if(postalcode != null)
+            account.ShippingPostalCode = postalcode;
+            
+            account.ShippingCountry = 'United States';
+            //account.RecordTypeId = '0122D000000t8Te';
+            List<ETCRecordtypeId__mdt> rectype = [SELECT RecordTypeId__c FROM ETCRecordtypeId__mdt];
+            account.RecordTypeId = rectype[0].RecordTypeId__c;
+            account.PersonHasOptedOutOfEmail=true;
+            insert account;
+                 
+        }
+        
+        
+        catch(DMLException dex)
+        {
+            system.debug('exception occured on main method while updating details ' + dex.getMessage());
+        }        
+        catch(Exception ex)
+        {          
+            account = new Account();
+            account.FirstName = fname;
+            account.LastName = lname;
+            account.PersonEmail = emailId;
+            insert account;
+            system.debug('exception occured while inserting case details-->' + ex.getMessage());
+            system.debug('exception occured while inserting case details-->' + ex.getStackTraceString());
+        }
+        
+        return account.Id; 
+            
+    }*/
+
+    @TestVisible private Id CreateRetrieveAccount(String emailId, String fName, String lName, 
+                                                  string phone,string address,string address2,
+                                                  string city, string state,string postalcode,string country)
+    {
+        List<Account> accountLst = [Select Id from Account where PersonEmail =: emailId LIMIT 1];
+        if (accountLst.size() == 0) 
+        {            
+            //return CreateAccount(emailId, fName, lName, phone, address, address2, city, state, postalcode, country);
+			Account account = new Account();
+            try
+            {           
+                if(fName == lName){
+                    account.LastName = lName;
+                }else{
+                    account.FirstName = fName;
+                    account.LastName = lName;
+                }
+                account.PersonEmail = emailId;
+                if(string.isNotBlank(phone))
+                    account.Phone = phone;        
+                if(address2 != null)           
+                    account.ShippingStreet = address + ',' + address2;           
+                else
+                    account.ShippingStreet = address;
+                
+                if(city != null)
+                account.ShippingCity = city;
+                if(state != null)
+                account.ShippingState = state;
+                if(postalcode != null)
+                account.ShippingPostalCode = postalcode;
+                
+                account.ShippingCountry = 'United States';
+                //account.RecordTypeId = '0122D000000t8Te';
+                List<ETCRecordtypeId__mdt> rectype = [SELECT RecordTypeId__c FROM ETCRecordtypeId__mdt];
+                account.RecordTypeId = rectype[0].RecordTypeId__c;
+                account.PersonHasOptedOutOfEmail=true;
+                accountLst.add(account);
+                insert accountLst;
+            } catch(DMLException dex)
+            {
+                system.debug('exception occured on main method while updating details ' + dex.getMessage());
+            }        
+            catch(Exception ex)
+            {          
+                account = new Account();
+                account.FirstName = fname;
+                account.LastName = lname;
+                account.PersonEmail = emailId;
+                insert account;
+                system.debug('exception occured while inserting case details-->' + ex.getMessage());
+                system.debug('exception occured while inserting case details-->' + ex.getStackTraceString());
+            }
+        }
+        else
+        {                  
+            Account account = [select FirstName, LastName, PersonEmail,
+                               Phone,ShippingStreet,ShippingCity,ShippingState,
+                               ShippingPostalCode from Account where id = :accountLst[0].Id];
+			system.debug('firstname ==> ' +account.FirstName);
+			system.debug('lastname ==> ' +account.LastName);
+			system.debug('personemail ==> ' +account.PersonEmail);
+
+            try
+            {                
+                if(String.isNotBlank(emailId))
+                {
+                    system.debug('@@farooq --> person account '+emailId);
+                 account.PersonEmail = emailId;
+                }
+                if(String.isNotBlank(Phone))
+                 account.Phone = Phone;
+                if(String.isNotBlank(address))
+                 account.ShippingStreet = address + ',' + address2;
+                if(String.isNotBlank(city))
+                 account.ShippingCity = city;
+                if(String.isNotBlank(state))
+                 account.ShippingState = state;
+                if(String.isNotBlank(postalcode))
+                 account.ShippingPostalCode = postalcode;
+                 account.ShippingCountry = 'United States';
+                
+                account.PersonHasOptedOutOfEmail=true;
+                update account;
+				system.debug('account ===> ' + accountLst[0].Id);
+    			system.debug('account.PersonHasOptedOutOfEmail' + account.PersonHasOptedOutOfEmail);
+				
+            }
+            catch(Exception ex)
+            {
+                system.debug('exception occured while updating case details-->' + ex.getMessage());
+                system.debug('exception occured while updating case details-->' + ex.getStackTraceString());
+            }             
+            system.debug('firstname ==> ' +account.FirstName);
+			system.debug('lastname ==> ' +account.LastName);
+			system.debug('personemail ==> ' +account.PersonEmail);           
+			
+        }
+		return accountLst[0].Id;
+		
+    } 
+
+	
+    
+    @TestVisible
+    Private String GetCategory(String emailBody)
+    {
+        List<CategoryRegex__mdt> lCat = [select Label,CategoryRegex__c from CategoryRegex__mdt];
+        emailBody = emailBody.replaceAll('\r\n|\n|\r',' '); 
+        String subcat;
+        String pickListVal;
+        for(CategoryRegex__mdt cat: lCat)
+        {
+            subcat = FindCategory(cat.CategoryRegex__c,emailBody);
+            System.debug('Email Body :' + emailBody);
+            System.debug('Category Regex :' + cat.CategoryRegex__c);
+            if(String.isNotBlank(subcat))
+            {
+                System.debug('Cat and Subcat values :' + cat.Label + '|' + subcat);
+                return pickListVal = cat.Label + '|' + subcat; 
+            }
+           
+        } 
+        return pickListVal;         
+    }
+    
+    @TestVisible
+    private string FindCategory(string regex, string emailBody)
+    {   
+        string match;
+        try
+        {   
+            Matcher matcher=Pattern.compile(regex).matcher(emailBody);
+            boolean foundmatch = matcher.find();        
+            if(foundmatch)
+            {
+               match =  matcher.group(2);
+            }
+        }
+        Catch(Exception ex)
+        { 
+           System.debug('exception cause:' + ex.getMessage());
+            return match;
+        }
+        return match;
+    }
+    
+    @TestVisible
+    Private String PurchaseFrom(String regex, String emailBody)
+    { 
+         String val;    
+        try
+        {
+            emailBody = emailBody.replaceAll('\r\n|\n|\r',' ');                     
+            Matcher matcher=Pattern.compile(regex).matcher(emailBody);
+            boolean foundmatch = matcher.find();
+            if(foundmatch)
+            {
+                val = matcher.group(2);
+                System.debug('purchase from val ' + val);
+                if(Val != null)
+                {
+                    val = val.trim();
+                }
+            }
+        }
+        Catch(Exception ex)
+        {            
+            System.debug('exception cause:' + ex.getCause());
+            System.debug('exception cause:' + ex.getMessage());
+        }
+        return val;
+    }   
+}
+
+===========================================================================================================================
+
+public class EmailMessageHandler {
+    List<Id> cIds= new List<Id>();
+    public void onBeforeInsert(List<EmailMessage> eMailListObj)
+    {  
+        string strFirstName,strLastName,strEmail,strPhone,strCompany,strAddress,strAddress2,strCity,strState,strCountry, strComment;
+        string strBrand,fromaddress,lName,fName,strBLine,NameString,strZip;
+        
+        List<EmailBodyFormatter__mdt> bodyForatter = [select bodyFormatter__c from EmailBodyFormatter__mdt];
+        string bodyFormatter = bodyForatter[0].bodyFormatter__c;
+        
+        List<ETCNameRegex__mdt> NameReg = [select nameRegex__c from ETCNameRegex__mdt];
+        string nameregex= NameReg[0].nameRegex__c;
+        
+        List<ETCFirstNameRegex__mdt> FirstNameReg = [select firstnameRegex__c from ETCFirstNameRegex__mdt];
+        string firstnameRegex= FirstNameReg[0].firstnameRegex__c;  
+         
+
+        List<ETCLastNameRegex__mdt> LastNameReg= [select lastnameRegex__c from ETCLastNameRegex__mdt];
+        string lastnameRegex= LastNameReg[0].lastnameRegex__c;
+        
+        List<ETCPhoneRegex__mdt> PhoneReg= [select phoneRegex__c from ETCPhoneRegex__mdt];
+        string phoneRegex= PhoneReg[0].phoneRegex__c;
+        
+        List<ETCCompanyRegex__mdt> CompanyReg= [select companyRegex__c from ETCCompanyRegex__mdt];
+        string companyRegex= CompanyReg[0].companyRegex__c;  
+        
+        
+        List<ETCAddressRegex__mdt> AddressReg= [select addressRegex__c from ETCAddressRegex__mdt];
+        string addressRegex= AddressReg[0].addressRegex__c;
+        
+        List<ETCAddress2Regex__mdt> Address2Reg= [select address2Regex__c from ETCAddress2Regex__mdt];
+        string address2Regex= Address2Reg[0].address2Regex__c;
+        
+        
+        List<ETCCityRegex__mdt> CityReg= [select cityRegex__c from ETCCityRegex__mdt];
+        string cityRegex= CityReg[0].cityRegex__c;
+       
+        
+        List<ETCStateRegex__mdt> StateReg= [select stateRegex__c from ETCStateRegex__mdt];
+        string stateRegex= StateReg[0].stateRegex__c;
+        
+        List<ETCZipRegex__mdt> ZipReg= [select zipregex__c from ETCZipRegex__mdt];
+        string zipRegex= ZipReg[0].zipregex__c;
+    
+        List<ETCcomments__mdt> CommentsReg= [select commentsRegex__c from ETCcomments__mdt];
+        string commentsregex= CommentsReg[0].commentsRegex__c; 
+
+        String strCategory = 'New Order';
+        string strSubCategory; 
+        String val; 
+           
+       
+        string emailregexstr = '((?i)(Email:|Email|Mail|Mail:))';
+        //Before insert logic
+        //Get parent cases of incoming emails    
+        for(EmailMessage e : eMailListObj){         
+        if(e.Incoming) {
+            cIds.add(e.ParentId);
+            system.debug('parentid'+cIds);
+            }
+        } 
+        Map<Id,Case> lCases  =  new Map<Id,Case>([SELECT Id,AccountId,Recursive__c,Brand__c  FROM CASE WHERE Id IN :cIds]);
+        //caseRec.ContactId = contactId;
+        List<Case> cased2Upd = new List<Case>();
+        
+        
+        for(EmailMessage emsg : eMailListObj){
+            if(emsg.Incoming){
+                system.debug('incoming siri'+emsg.Incoming+'///////////'+PhoneReg);
+                Case crecursive = lCases.get(emsg.ParentId);        
+                System.debug('RECUSIVECALL'+crecursive);
+                if(!System.Test.isRunningTest()){
+                    if(crecursive.Recursive__c == true){   
+                        return;
+                    }
+                }
+                
+                system.debug(emsg.FromAddress + '###incoming email : ' + emsg.ToAddress);
+                
+                fromaddress = emsg.FromAddress;
+                try{
+                    if(emsg.FromName!=null){           
+                        lName = emsg.FromName.split(' ')[1];
+                        fName = emsg.FromName.split(' ')[0];
+                    }
+                }
+                Catch(Exception e){
+                    System.debug('EEEEEEEE'+e.getmessage());
+                }
+                system.debug('FromName :'+emsg.FromName);
+                system.debug('FromAddress :'+emsg.FromAddress);
+                system.debug('ParentId :'+emsg.ParentId);
+                system.debug('Subject :'+emsg.Subject);
+                system.debug('ToAddress :'+emsg.ToAddress);
+                system.debug('CcAddressCcAddress:'+emsg.CcAddress);
+                system.debug('BccAddressBccAddress :'+emsg.BccAddress);
+                system.debug('TextBody :'+emsg.TextBody);
+                system.debug('HtmlBody :'+emsg.HtmlBody);
+                system.debug('Headers :'+emsg.Headers);
+                system.debug('bodyformatter :' + bodyFormatter);
+                
+                //removing unwanted data
+                string strbody = EmailBodyFormating(emsg.TextBody, bodyFormatter); 
+                strbody = strbody.replaceAll('http.*?\\s', '');
+                strbody = strbody.replaceAll('\r\n|\n|\r',' '); 
+                //new code begin
+                
+                //First section
+                if(emsg.Subject != null){
+                    strBrand = GetBrand(emsg.Subject);
+                    if(strBrand != null || string.isNotBlank(strComment)){
+                        strBrand = strBrand.trim();
+                    }
+                    else{
+                        strBrand = GetBrand(strbody);
+                    }
+                }else{
+                    if((string.isBlank(strBrand) || strBrand == null) && (string.isNotBlank(strComment)||strComment != null))
+                        strBrand = GetBrand(strComment);
+                    if(string.isBlank(strBrand))
+                        strBrand = GetBrand(strbody);
+                }
+                
+                if(string.isBlank(strBrand) || strBrand == null)
+                {
+                    strBrand = GetBrandByKeyWords(strbody);
+                }
+                
+                //if email send to design@closetmaid.com OR design@ames.com
+                if(System.label.IncomingToAddress != null){
+                    List<String> strToAddress = System.label.IncomingToAddress.split(';');                    
+                    for(String incomingToAddress:strToAddress){
+                        if(incomingToAddress == emsg.ToAddress || incomingToAddress == emsg.CcAddress ||
+                             emsg.ToAddress.contains(incomingToAddress) || 
+                             (emsg.CcAddress != null && emsg.CcAddress.contains(incomingToAddress))){                           
+                            strBrand = 'Closetmaid design';
+                        }
+                    }
+                } 
+                    
+                if(string.isNotBlank(strBrand)){
+                strBLine = GetBLine(strBrand); 
+                system.debug('business line selected --> ' + strBLine);
+                } 
+                /*           
+                String searchStr;
+                searchStr = ParseEmail(strbody);
+                if(String.isBlank(searchStr) && string.isNotBlank(strComment))
+                {
+                    searchStr = ParseEmail(strComment);
+                    if(String.isBlank(searchStr) || searchStr == null)
+                    {
+                        searchStr = emsg.Subject;
+                    }
+                }*/
+                String purchaseFromstr;
+                List<ETCPurchasedFrom__mdt> purfrom = [SELECT PurchasedFrom__c FROM ETCPurchasedFrom__mdt];             
+                purchaseFromstr = PurchaseFrom(purfrom[0].PurchasedFrom__c,strbody);  
+                if(string.isBlank(purchaseFromstr) && string.isNotBlank(strComment))
+                    purchaseFromstr = PurchaseFrom(purfrom[0].PurchasedFrom__c,strComment);  
+                if(string.isBlank(purchaseFromstr))
+                    purchaseFromstr = 'Other';              
+                
+                if(String.isNotBlank(strbody))
+                {
+                    val = GetCategory(strbody);  
+                        if(String.isBlank(val) && String.isNotBlank(strComment))
+                            val = GetCategory(strComment);  
+                }
+                
+                if(String.isNotBlank(val) || val != null)
+                {
+                   if(val.contains('|'))
+                   {
+                       string[] str = val.split('\\|');                       
+                       if(str.size() > 0)
+                       {
+                          strCategory = str[0].trim().capitalize();
+                          strSubCategory = str[1].trim().capitalize();
+                       }
+                   }                       
+                }
+
+                //second section
+                //first name and last name
+                //name              
+                system.debug('name regex -->' + nameregex);
+                
+                NameString = ExtractAccount(strbody, nameregex, emailregexstr);
+                
+                if(string.isBlank(NameString) || NameString == null)
+                {
+                    NameString = ExtractAccount(strbody,nameregex,firstnameregex);
+                } 
+                if(string.isBlank(NameString) || NameString == null)
+                {
+                    NameString = ExtractAccount(strbody,nameregex,addressregex);
+                } 
+                if(string.isBlank(NameString) || NameString == null)
+                {
+                    NameString = ExtractAccount(strbody,nameregex,phoneRegex);
+                } 
+                if(string.isNotBlank(NameString) || NameString != null)
+                {
+                    if(NameString.containsIgnoreCase('Company:'))
+                    {
+                        NameString.removeStartIgnoreCase('Company:');
+                    }
+                    if(NameString.containsIgnoreCase('AMES'))
+                    {
+                        NameString.removeStartIgnoreCase('AMES');
+                    }
+                    if(NameString.containsIgnoreCase('phone'))
+                    {
+                        NameString.removeStartIgnoreCase('phone');
+                    }
+                    if(NameString.containsIgnoreCase('city'))
+                    {
+                        NameString.removeStartIgnoreCase('city');
+                    }
+                    if(NameString.containsIgnoreCase('zip'))
+                    {
+                        NameString.removeStartIgnoreCase('zip');
+                    }
+                    if(NameString.containsIgnoreCase('address'))
+                    {
+                        NameString.removeStartIgnoreCase('address');
+                    }
+                    if(NameString.contains(':'))
+                    {
+                        NameString.remove(':');
+                    }
+                }
+                
+                if(string.isNotBlank(NameString) && NameString != null && emsg.ToAddress == 'help@ames.com')
+                {
+                    try
+                    {
+                        string[] names = NameString.split(' ');
+                        if(names.size() > 1)
+                        {                           
+                            strFirstName =  names[1];
+                            strLastName = names[2];
+                            if(string.isNotBlank(strLastName) && strLastName != null)
+                            {
+                                if(strLastName.containsIgnoreCase('Email:'))
+                                {                                   
+                                    strLastName = strLastName.substringBefore('Email:');
+                                }
+                                else if(strLastName.containsIgnoreCase('mail'))
+                                   strLastName = strLastName.removeStartIgnoreCase('mail');
+                                else if(strLastName.containsIgnoreCase('mail:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('mail:');
+                                else if(strLastName.containsIgnoreCase('Address1:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('Address1:');
+                                else if(strLastName.containsIgnoreCase('Address2:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('Address2:');
+                                else if(strLastName.containsIgnoreCase('Address'))
+                                   strLastName = strLastName.removeStartIgnoreCase('Address');
+                                else if(strLastName.containsIgnoreCase('Phone:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('Phone:');
+                                else if(strLastName.containsIgnoreCase('Comapny:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('Company:');
+                                else if(strLastName.containsIgnoreCase('comments:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('comments:');
+                                else if(strLastName.containsIgnoreCase('zip:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('zip:');
+                                else if(strLastName.containsIgnoreCase('state:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('state:');
+                                else if(strLastName.Contains('Postalcode:'))
+                                   strLastName = strLastName.removeStartIgnoreCase('Postalcode:');  
+                                 else if(strLastName.containsIgnoreCase('AMES'))
+                                   strLastName = strLastName.removeStartIgnoreCase('AMES');  
+
+                            }
+                            system.debug('fname ' + strFirstName);
+                            system.debug('lname ' + strLastName); 
+                            
+                        }                                       
+                        if(names.size() == 1)
+                        {
+                            strLastName = names[1];
+                        }                        
+                        if(string.isBlank(strLastName) || strLastName == null)
+                        {
+                            strLastName = names[1];
+                        }
+                    }
+                    Catch(Exception ex)
+                    {
+                        System.debug('exception occured in name block ' + ex.getMessage());
+                    }
+                }    
+				 system.debug('fname ' + strFirstName);
+                 system.debug('lname ' + strLastName);            
+               
+                
+                // first name
+                if(String.isBlank(strFirstName) || strFirstName == null)
+                {                                     
+                    strFirstName = ExtractAccount(strbody,firstnameregex,lastnameregex);                    
+                }           
+                
+                if(String.isBlank(strFirstName) || strFirstName == null)
+                {
+                    strFirstName = ExtractAccount(strbody,firstnameregex,emailregexstr);         
+                }
+                if(String.isBlank(strFirstName) || strFirstName == null)
+                {
+                    strFirstName = ExtractAccount(strbody,firstnameregex,companyregex);         
+                }
+                if(String.isBlank(strFirstName) || strFirstName == null)
+                {
+                    strFirstName = ExtractAccount(strbody,firstnameregex,addressregex);         
+                }
+                if(String.isNotBlank(strFirstName) || strFirstName != null)
+                {
+                    string str = getVal(emailregexstr,strFirstName);
+                    if(str != null)
+                    {
+                        if(strFirstName.contains('Email'))
+                        {
+                            strFirstName.removeStartIgnoreCase('Email');
+                        }
+                        if(strFirstName.contains(':'))
+                        {
+                            strFirstName.removeStartIgnoreCase(':');
+                        }
+                    }
+                }
+                                
+                // last name
+                if(String.isBlank(strLastName) || strLastName == null)
+                {                   
+                    strLastName = ExtractAccount(strbody,lastnameregex,phoneregex);
+                    if((string.isNotBlank(strLastName) && strLastName !=null) && strLastName.Contains('Last Name'))
+                    {
+                        strLastName = strLastName.removeStartIgnoreCase('Last Name');                        
+                    }
+                    if(string.isBlank(strLastName) || strLastName == null)
+                    {
+                      strLastName = ExtractAccount(strbody,lastnameregex,addressregex);
+                    }
+                    if(string.isBlank(strLastName) || strLastName == null)
+                    {
+                      strLastName = ExtractAccount(strbody,lastnameregex,companyregex);
+                    }
+                    if(string.isNotBlank(strLastName) || strLastName != null)
+                    {
+                        if(strLastName.containsIgnoreCase('Email:'))
+                        {                                   
+                            strLastName = strLastName.substringBefore('Email:');
+                        }
+                        if(strLastName.containsIgnoreCase('company'))
+                         {
+                             strLastName.removeStartIgnoreCase('company');
+                         }
+                        if(strLastName.containsIgnoreCase('phone'))
+                         {
+                             strLastName.removeStartIgnoreCase('phone');
+                         }
+                        if(strLastName.containsIgnoreCase('email'))
+                         {
+                             strLastName.removeStartIgnoreCase('email');
+                         }
+                         if(strLastName.contains(':'))
+                         {
+                             strLastName.removeStartIgnoreCase(':');
+                         }                        
+                    }
+                    
+                }  
+				list<string> lstEmail = new list<string>();
+                if(string.isNotBlank(strbody) && strbody != null && emsg.ToAddress == 'help@ames.com')
+                {
+                    Matcher m = Pattern.compile('[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+').matcher(strbody);
+                    while (m.find()) {
+						
+						lstEmail.add(m.group(0));
+						strEmail = lstEmail[0];
+                        if(strEmail == 'help@ames.com') {
+							strEmail = lstEmail[1];
+						}
+						
+						system.debug('strEmail ===>> ' +strEmail);
+						system.debug('strEmail ===>> ' +lstEmail.add(m.group(0)));
+						system.debug('strEmail ===>> ' +lstEmail[0]);
+                                        
+                    }
+                }
+                else if(String.isBlank(strEmail) || strEmail == null)
+                {
+                    strEmail = emsg.FromAddress;
+                }
+                               
+                strPhone = ExtractAccount(strbody,phoneregex,companyregex);
+                if(string.isBlank(strPhone) || strPhone == null)
+                {
+                    strPhone = ExtractAccount(strbody,phoneregex,addressregex); 
+                }  
+                if(string.isBlank(strPhone) || strPhone == null)
+                {
+                    strPhone = ExtractAccount(strbody,phoneregex,zipregex); 
+                }  
+                if(string.isBlank(strPhone) || strPhone == null)
+                {
+                    strPhone = ExtractAccount(strbody,phoneregex,cityregex); 
+                } 
+                
+                if(string.isBlank(strPhone) || strPhone == null)
+                {
+                    strPhone = RetrieveCustomerData(strbody,phoneregex,'Topic:'); 
+                }                
+                if(string.isNotBlank(strPhone) && strPhone != null)
+                {
+                    Matcher matcher=Pattern.compile('([0-9]+)').matcher(strPhone);
+                         boolean foundmatch = matcher.find();
+                         if(foundmatch)
+                         {
+                             System.debug('phone'+matcher.group(1));
+                             strPhone = matcher.group(1);
+                         }
+                }
+                
+                strCompany = ExtractAccount(strbody,phoneregex,addressregex); 
+                if(string.isBlank(strCompany) || strCompany == null)
+                {
+                    strCompany = ExtractAccount(strbody,companyregex,commentsregex);  
+                }             
+                
+                if(string.isNotBlank(strCompany) && strCompany != null)
+                {
+                    if(strCompany.containsIgnoreCase('mail:'))
+                        strCompany = strCompany.substringBefore('mail:');
+                    else if(strCompany.containsIgnoreCase('Email:'))
+                        strCompany = strCompany.substringBefore('Email:');
+                    else if(strCompany.containsIgnoreCase('Address:'))
+                        strCompany = strCompany.substringBefore('Address:');
+                    else if(strCompany.containsIgnoreCase('Phone:'))
+                        strCompany = strCompany.substringBefore('Phone:');
+                    else if(strCompany.containsIgnoreCase('Postalcode:'))
+                        strCompany = strCompany.substringBefore('Postalcode:');
+                    else if(strCompany.containsIgnoreCase('Zip:'))
+                        strCompany = strCompany.substringBefore('Zip:');
+                    else if(strCompany.containsIgnoreCase('state:'))
+                        strCompany = strCompany.substringBefore('state:');
+                    else if(strCompany.containsIgnoreCase('country:'))
+                        strCompany = strCompany.substringBefore('Country:');
+                    else if(strCompany.containsIgnoreCase('comments:'))
+                        strCompany = strCompany.substringBefore('comments:');
+                    else if(strCompany.containsIgnoreCase('comment:'))
+                        strCompany = strCompany.substringBefore('comment:');
+                }
+                
+                strAddress = ExtractAccount(strbody,addressregex,commentsregex);
+                
+                if(strAddress == null)
+                     strAddress = ExtractAccount(strbody,addressregex,cityregex);
+                
+                if(string.isBlank(strAddress) || strAddress == null)
+                    strAddress = ExtractAccount(strbody,addressregex,address2regex);
+               
+                if(string.isBlank(strAddress) || strAddress == null)
+                    strAddress = ExtractAccount(strbody,addressregex,cityregex);
+                
+                if(string.isBlank(strAddress) || strAddress == null)
+                    strAddress = RetrieveCustomerData(strbody,addressregex,'Product Info');
+                
+                if(string.isBlank(strAddress) || strAddress == null)
+                    strAddress = RetrieveCustomerData(strbody,addressregex,'Home Phone Number');
+                
+                try
+                {
+                    if(string.isNotBlank(strAddress) || strAddress != null)
+                    {
+                       strAddress = strAddress.subStringBefore('Address 2'); //strAddress.substring(strAddress.indexOf(' ') + 10);
+                    }
+                }                
+                catch(Exception ex)
+                {
+                    system.debug('exception at address field ' + ex.getMessage());
+                }
+                                 
+                // Address2
+                strAddress2 = ExtractAccount(strbody,address2regex,commentsregex);
+                
+                try
+                {
+                    if(string.isNotBlank(strAddress2) || strAddress2 != null)
+                    {
+                        strAddress2 = strAddress2.substring(strAddress2.indexOf(' ') + 10);
+                    }
+                }                
+                catch(Exception ex)
+                {
+                    system.debug('exception at address2 field ' + ex.getMessage());
+                }
+                
+                
+                strCity = RetrieveCustomerData(strbody,cityregex);
+                
+                if(strCity == null)
+                strCity = RetrieveCustomerData(strbody,cityregex,'PostalCode:');
+                
+                if(string.isBlank(strCity) || strCity == null)
+                    strCity = RetrieveCustomerData(strbody,cityregex,'state:');                
+                
+                if(string.isBlank(strCity) || strCity == null)
+                    strCity = ExtractAccount(strbody,cityregex,zipregex);
+
+                if(string.isNotBlank(strCity) && strCity != null)
+                {
+                    strCity = strCity.substringBefore('\n');
+                    if(strCity.Contains('From:'))
+                        strCity = strCity.substringBefore('From:');
+                }
+              
+                 try
+                {
+                    if(string.isNotBlank(strCity) || strCity != null)
+                    {                       
+                        if(strCity.containsIgnoreCase('state:'))
+                        {                                   
+                            strCity = strCity.substringBefore('State:');
+                        }
+                        if(strCity.containsIgnoreCase('Zip:'))
+                        {                                   
+                            strCity = strCity.substringBefore('Zip:');
+                        }
+                        if(strCity.containsIgnoreCase('postal code'))
+                        {                                   
+                            strCity = strCity.substringBefore('Postal Code:');
+                        }
+                    }
+                }                
+                catch(Exception ex)
+                {
+                    system.debug('exception at address field ' + ex.getMessage());
+                }
+                
+                strZip= RetrieveCustomerData(strbody,zipRegex);
+                if(string.isBlank(strZip) || strZip == null)                
+                    strZip = RetrieveCustomerData(strbody,zipRegex, 'Country');
+                if(string.isNotBlank(strZip) && strZip != null)
+                {
+                    Matcher matcher=Pattern.compile('([0-9]{5})').matcher(strZip);
+                         boolean foundmatch = matcher.find();
+                         if(foundmatch)
+                         {
+                             strZip = matcher.group(1);
+                         } 
+                }
+                
+                
+                if((string.isBlank(strZip) ||strZip ==null)  && (string.isNotBlank(strAddress) || strAddress != null))
+                {
+                        Matcher matcher=Pattern.compile('([0-9]{5})').matcher(strAddress);
+                         boolean foundmatch = matcher.find();
+                         if(foundmatch)
+                         {
+                             strZip = matcher.group(1);
+                         }    
+                }                
+                if(string.isBlank(strZip) || strZip == null)
+                {
+                    strZip = ExtractAccount(strbody,stateregex, commentsregex);                    
+                }
+                
+                if(string.isNotBlank(strZip) && strZip != null)
+                    strZip = strZip.substringBefore('\n');                
+                
+                if(strPhone != null)
+                {
+                    if(strPhone.contains('+1'))
+                    {
+                        strPhone.remove('+1');
+                    }
+                }
+                if(strcompany!= null)                    
+                {
+                    if(strcompany.containsIgnoreCase('Company:'))
+                        strcompany = strcompany.replaceAll('Company:','');
+                    
+                    String invalidNumbers = '[0-9]+';
+                    strCompany = strCompany.replaceAll(invalidNumbers, '' );
+                }
+                
+                try
+                {                     
+                    if(strCity != null)
+                    {
+                        strCity = strCity.substring(0,strCity.indexOf(' '));
+                    }
+                }
+                Catch(Exception ex)
+                {
+                    System.debug('exception occured while getting city value ' + ex.getMessage());
+                }
+                
+                strState = null;
+                strCountry = 'United States';  
+                               
+                strComment = RetrieveCustomerData(strbody,commentsregex); 
+                
+                if((string.isBlank(strLastName) ||strLastName == null) && (string.isNotBlank(strFirstName) ||strFirstName != null))
+                {
+                    strLastName = strFirstName;
+                    strFirstName = '';
+                }
+                if((string.isBlank(strFirstName) || strFirstName == null) && (string.isBlank(strLastName) ||strLastName == null))
+                {
+                    try{
+                        if(emsg.FromName!=null){
+                            strFirstName = emsg.FromName.split(' ')[0];
+                            strLastName = emsg.FromName.split(' ')[1];
+                            System.debug('Since first name last name not found in the email body --> assigning from value :' + strFirstName +',' +strLastName);
+                        }
+                    }
+                    Catch(Exception e){
+                        System.debug('EEEEEEEE'+e.getmessage());
+                    }
+                } 
+				/*else if((string.isBlank(strFirstName) || strFirstName == null) && (string.isBlank(strLastName) ||strLastName == null) && (emsg.ToAddress == 'web@ames.com' || emsg.ToAddress == 'orders@ames.com' || emsg.ToAddress == 'pro@ames.com' || emsg.ToAddress == 'help@ames.com'))
+                {
+                    try{
+                        if(emsg.FromName!=null){
+                            strFirstName = emsg.FromName.split(' ')[0];
+                            strLastName = emsg.FromName.split(' ')[1];
+                            System.debug('Since first name last name not found in the email body --> assigning from value :' + strFirstName +',' +strLastName);
+                        }
+                    }
+                    Catch(Exception e){
+                        System.debug('EEEEEEEE'+e.getmessage());
+                    }
+                }*/
+                
+                if(string.isBlank(strEmail) || strEmail == null )
+                {
+                    strEmail = emsg.FromAddress;                    
+                    System.debug('Since email id did not found in the email body --> assigning from address value :' +strEmail);
+                } 
+                /*else{
+                    strEmail = emsg.FromAddress;
+                }*/
+                
+                System.debug('full customer data --> ' + strFirstName + '|' +strLastName + '|' +strEmail + '|' +strPhone + '|' +strAddress + '|' +strCity + '|' +strState + '|' +strZip);
+                //end region
+                                  
+                Case c = lCases.get(emsg.ParentId);
+				//Case c = new Case();
+                    
+                     system.debug('@@farooq --> before imag extension '+strEmail);
+                
+                    if(string.isNotBlank(strEmail) && strEmail != null)
+                    {
+                           if(strEmail.Contains('.png') ||
+                           strEmail.Contains('.jpg') ||
+                           strEmail.Contains('.jpeg') ||
+                          strEmail.Contains('.img'))
+                        {
+                            strEmail = emsg.FromAddress;
+                        }
+                        else
+                        {
+                          strEmail = strEmail.trim();
+                        }                       
+                     
+                    }
+                    system.debug('@@farooq -->email'+strEmail);
+                    if(string.isNotBlank(strFirstName) && strFirstName != null)
+                          strFirstName = strFirstName.trim();
+                    if(string.isNotBlank(strLastName) && strLastName != null)
+                          strLastName = strLastName.trim();
+                    if(string.isNotBlank(strPhone) && strPhone != null)
+                          strPhone = strPhone.trim();
+                    if(string.isNotBlank(strAddress) && strAddress != null)
+                          strAddress = strAddress.trim();
+                    if(string.isNotBlank(strAddress2) && strAddress2 != null)
+                          strAddress2 = strAddress2.trim();
+                    if(string.isNotBlank(strCity) && strCity != null)
+                          strCity = strCity.trim();
+                    if(string.isNotBlank(strState) && strState != null)
+                          strState = strState.trim();
+                    if(string.isNotBlank(strZip) && strZip != null)
+                          strZip = strZip.trim();
+                    if(string.isNotBlank(strcompany) && strcompany != null)
+                        strCompany = strCompany.trim();
+                          
+                    System.debug('inside account object :' + strEmail + ',' + strFirstName + ',' + strLastName);  
+					
+                    //if(c.AccountId == null) 
+					//{
+                    //if(string.isNotBlank(strEmail) && strEmail != null && ((string.isNotBlank(strFirstName) && strFirstName != null) || (string.isNotBlank(strFirstName) && strFirstName != null))) {
+                	if(strEmail != 'help@ames.com'){
+						c.AccountId = CreateRetrieveAccount(strEmail, strFirstName, strLastName, strPhone, strAddress, strAddress2, strCity, strState, strZip, strCountry);
+					}
+                    
+                    
+					system.debug(c.AccountId);
+                   
+                    try
+                    {
+                        /*
+                          if(strComment != null)
+                          {
+                              //searchStr = searchStr.substring(searchStr.indexOf(' ') + 5);
+                              //c.Knowledge_Search_Text__c = searchStr;
+                              //c.Knowledge_Search_Text__c = strComment;
+                          }
+                        */                         
+                          
+                              if(string.isNotBlank(strEmail))
+                                  c.SuppliedEmail = emsg.FromAddress;
+                            /*  else
+                                  c.SuppliedEmail = emsg.FromAddress;   */                
+                                   
+                                  c.Purchase_From__c = purchaseFromstr;
+                                  //if(String.isNotBlank(strCategory))
+                                    //c.Category__c = strCategory;
+                                  if(String.isNotBlank(strSubCategory))
+                                    c.Sub_Category__c = strSubCategory;
+                             
+                                  /*if(String.isNotBlank(strBrand))
+                                  {                                    
+                                        c.Brand__c = strBrand;                                      
+                                  }*/
+
+                                 if(String.isNotBlank(strBrand) && emsg.ToAddress == 'help@ames.com') {                                
+                                      c.Brand__c = strBrand;   
+                                      c.Category__c = strCategory;                                 
+                                 } else if(emsg.ToAddress == 'web@ames.com' || emsg.ToAddress == 'orders@ames.com' || emsg.ToAddress == 'pro@ames.com') {
+                                      if(c.Brand__c == ''){
+										 c.Brand__c = '';
+                                      } 
+									  system.debug('c.Brand__c ==> ' +c.Brand__c);
+                                      c.Category__c = strCategory;
+                                  }
+                                  
+                                  c.Company__c = strCompany;
+                                  c.Comments__c = strComment; 
+                                  //Add Brand and Businessline empty for Employee Order cases
+                                  if(emsg.Subject.contains(Label.Employee_Orders)||emsg.Subject.contains(Label.Employee_Order) ||
+                                    emsg.Subject.contains(Label.Employee_Orders_2)||emsg.Subject.contains(Label.Employee_Order_2)){
+                                        c.BusinessLine__c = '';
+                                        c.Brand__c = '';
+                                  } else{  
+                                      c.BusinessLine__c = strBLine;
+                                  }
+                                  c.Recursive__c = true;                            
+                                  system.debug('brand finalvalue saved :' + c.Brand__c );
+                              system.debug('business finalvalue saved :' + c.BusinessLine__c );
+                             cased2Upd.add(c);                        
+                    }
+                    catch(Exception ex)
+                    {
+                        system.debug('exception occured while updating case details-->' + ex.getMessage());
+                        system.debug('exception occured while updating case details-->' + ex.getStackTraceString());
+                    }
+                    
+            }
+        }
+      try
+      {
+       //updating cases and adding associate accounts     
+       System.debug('$$$$$$$$$$$'+cased2Upd);  
+       update(cased2Upd);
+       
+        
+      }
+      catch(DMLException dex)
+      {
+          system.debug('exception occured on main method while updating details ' + dex.getMessage());
+      }
+      catch(Exception ex)
+      {
+          system.debug('exception occured on main method while updating details ' + ex.getMessage());
+      }
+   }
+    
+    @TestVisible
+    Private String GetVal(String regex, String stringVal)
+    { 
+        String val;    
+        try
+        {                               
+            Matcher matcher=Pattern.compile(regex).matcher(stringVal);
+            boolean foundmatch = matcher.find();
+            if(foundmatch)
+            {
+                val = matcher.group(2);
+            }
+        }
+        Catch(Exception ex)
+        {            
+            System.debug('exception cause:' + ex.getCause());
+            System.debug('exception cause:' + ex.getMessage());
+        }
+        return val;
+    }
+    
+    @TestVisible
+    private string RetrieveCustomerData(string strbody, string regex, string stop)
+    {
+        string strValue;
+        try
+        {
+            Matcher matcher=Pattern.compile(regex).matcher(strbody);
+            boolean foundmatch = matcher.find();
+            if(foundmatch)
+            {
+                string val = matcher.group(2);
+                system.debug(val);                
+                strValue = strbody.substringBetween(val, stop);
+                system.debug(strValue);
+               
+            }
+        }
+        catch(Exception ex)
+        {
+            System.debug('exception occured in RetrieveCustomerData method: ' + ex.getMessage());
+            strValue = null;
+        }
+       
+        return strValue;
+    }
+    
+    @TestVisible
+    private string ExtractAccount(string strbody, string startregex, string endregex)
+    {
+         string val,strValue;
+        try
+        {           
+            Matcher matcher1=Pattern.compile(endregex).matcher(strbody);
+            boolean foundmatch1 = matcher1.find();
+            if(foundmatch1)
+            {
+                val = matcher1.group(2);                
+            }
+        
+            Matcher matcher=Pattern.compile(startregex).matcher(strbody);
+            boolean foundmatch = matcher.find();
+            if(foundmatch)
+            {
+                string val1 = matcher.group(2);
+                system.debug('first regex ' + val1);                
+                system.debug('val ' + val);
+                if(val == null || string.isBlank(val))
+                {                    
+                    strValue = strbody.substringAfter(val1);
+                    system.debug('str ' + strValue);                    
+                    system.debug('account field --> ' + strValue);
+                    strValue = strValue.substring(0,strValue.indexOf(' '));
+                    
+                }
+                else
+                {
+                    strValue = strbody.substringBetween(val1,val);                    
+                }                
+                system.debug('final value ' + strValue);
+            }
+        }
+        catch(Exception ex)
+        {
+            System.debug('exception occured in ExtractAccount method: ' + ex.getMessage());
+            strValue = null;
+        }
+        return strValue;
+        
+    }    
+
+    @TestVisible
+    private string GetBrand(string emailBody)
+    {
+        string match;
+        List<ETCBrands__mdt> brandsReg = [select Label,brands__c from ETCBrands__mdt];
+            for(ETCBrands__mdt brands : brandsReg)
+            { 
+                    try
+                    {   
+                        system.debug('brand regex ' + brands.brands__c);
+                                            
+                        Matcher  matcher = Pattern.compile(brands.brands__c).matcher(emailBody);   
+                      
+                        boolean foundmatch = matcher.find();        
+                        if(foundmatch)
+                        {
+                           return match = brands.Label.trim();                                                   
+                        }
+                    }
+                    Catch(Exception ex)
+                    { 
+                        System.debug('exception cause:' + ex.getMessage());            
+                    }
+            }
+        return match;
+    }
+
+    @TestVisible
+    private string GetBrandByKeyWords(string emailBody)
+    {
+        string match;
+        List<HomeOrgKeyword__mdt> keywords = [select Label,Keywords__c from HomeOrgKeyword__mdt];
+            for(HomeOrgKeyword__mdt brands : keywords)
+            { 
+                    try
+                    {   
+                        system.debug('brand regex ' + brands.Keywords__c);
+                        Matcher matcher=Pattern.compile(brands.Keywords__c).matcher(emailBody);
+                        boolean foundmatch = matcher.find();        
+                        if(foundmatch)
+                        {
+                           return match = brands.Label.trim();                                                   
+                        }
+                    }
+                    Catch(Exception ex)
+                    { 
+                        System.debug('exception cause:' + ex.getMessage());            
+                    }
+            }
+        return match;
+    }
+
+    @TestVisible
+    private string GetBLine(string emailBody)
+    {
+        string match;
+        List<BrandMapping__mdt> brandCol = [select Label, brandCollection__c from BrandMapping__mdt];
+        //string brandCollection= brandCol[0].brandCollection__c;
+        for(BrandMapping__mdt mapi: brandCol)
+        {
+            System.debug(mapi.brandCollection__c);
+             if(emailBody != null)
+                 emailBody = emailBody.trim();
+             Matcher matcher=Pattern.compile(mapi.brandCollection__c).matcher(emailBody);
+             boolean foundmatch = matcher.find();        
+             if(foundmatch)
+             {                 
+                 system.debug('business line -->' + mapi.Label);          
+                 return match = mapi.Label;
+             }
+        }
+        return match;
+    }
+    
+    @TestVisible
+    private string RetrieveCustomerData(string strbody, string regex)
+    {
+        string strValue;
+            Matcher matcher=Pattern.compile(regex).matcher(strbody);
+            boolean foundmatch = matcher.find();
+            if(foundmatch)
+            {
+                string val = matcher.group(2);
+                system.debug(val);
+                strValue = strbody.substringAfter(val);               
+            }
+        return strValue;
+    }
+    
+    @TestVisible
+    private string EmailBodyFormating(string strEmailBody, string bodyFormatter)
+    {        
+        string emailBody = strEmailBody;
+        if(String.isNotBlank(emailBody) && String.isNotBlank(bodyFormatter))
+        {
+            string[] formatters = bodyFormatter.split('\\|');
+            for(string formatter : formatters)
+            {
+                if(emailBody.Contains(formatter))
+                {
+                     emailBody = emailBody.substring(0, emailBody.indexOf(formatter));
+                     system.debug(emailBody);       
+                }
+            }
+        }
+        return emailBody;        
+    }
+
+    /*@TestVisible
+    private Id CreateAccount(String emailId, String fName, String lName, string phone,
+                             string address,string address2,string city, 
+                             string state,string postalcode, string country)
+    {
+        
+        Account account = new Account();
+        try
+        {           
+            if(fName == lName){
+                account.LastName = lName;
+            }else{
+                account.FirstName = fName;
+                account.LastName = lName;
+            }
+            account.PersonEmail = emailId;
+            if(string.isNotBlank(phone))
+                account.Phone = phone;        
+            if(address2 != null)           
+                account.ShippingStreet = address + ',' + address2;           
+            else
+                account.ShippingStreet = address;
+            
+            if(city != null)
+            account.ShippingCity = city;
+            if(state != null)
+            account.ShippingState = state;
+            if(postalcode != null)
+            account.ShippingPostalCode = postalcode;
+            
+            account.ShippingCountry = 'United States';
+            //account.RecordTypeId = '0122D000000t8Te';
+            List<ETCRecordtypeId__mdt> rectype = [SELECT RecordTypeId__c FROM ETCRecordtypeId__mdt];
+            account.RecordTypeId = rectype[0].RecordTypeId__c;
+            account.PersonHasOptedOutOfEmail=true;
+            insert account;
+                 
+        }
+        
+        
+        catch(DMLException dex)
+        {
+            system.debug('exception occured on main method while updating details ' + dex.getMessage());
+        }        
+        catch(Exception ex)
+        {          
+            account = new Account();
+            account.FirstName = fname;
+            account.LastName = lname;
+            account.PersonEmail = emailId;
+            insert account;
+            system.debug('exception occured while inserting case details-->' + ex.getMessage());
+            system.debug('exception occured while inserting case details-->' + ex.getStackTraceString());
+        }
+        
+        return account.Id; 
+            
+    }*/
+
+    @TestVisible private Id CreateRetrieveAccount(String emailId, String fName, String lName, 
+                                                  string phone,string address,string address2,
+                                                  string city, string state,string postalcode,string country)
+    {
+        List<Account> accountLst = [Select Id from Account where PersonEmail =: emailId LIMIT 1];
+        if (accountLst.size() == 0) 
+        {            
+            //return CreateAccount(emailId, fName, lName, phone, address, address2, city, state, postalcode, country);
+			Account account = new Account();
+            try
+            {           
+                if(fName == lName){
+                    account.LastName = lName;
+                }else{
+                    account.FirstName = fName;
+                    account.LastName = lName;
+                }
+                account.PersonEmail = emailId;
+                if(string.isNotBlank(phone))
+                    account.Phone = phone;        
+                if(address2 != null)           
+                    account.ShippingStreet = address + ',' + address2;           
+                else
+                    account.ShippingStreet = address;
+                
+                if(city != null)
+                account.ShippingCity = city;
+                if(state != null)
+                account.ShippingState = state;
+                if(postalcode != null)
+                account.ShippingPostalCode = postalcode;
+                
+                account.ShippingCountry = 'United States';
+                //account.RecordTypeId = '0122D000000t8Te';
+                List<ETCRecordtypeId__mdt> rectype = [SELECT RecordTypeId__c FROM ETCRecordtypeId__mdt];
+                account.RecordTypeId = rectype[0].RecordTypeId__c;
+                account.PersonHasOptedOutOfEmail=true;
+                accountLst.add(account);
+                insert accountLst;
+            } catch(DMLException dex)
+            {
+                system.debug('exception occured on main method while updating details ' + dex.getMessage());
+            }        
+            catch(Exception ex)
+            {          
+                account = new Account();
+                account.FirstName = fname;
+                account.LastName = lname;
+                account.PersonEmail = emailId;
+                insert account;
+                system.debug('exception occured while inserting case details-->' + ex.getMessage());
+                system.debug('exception occured while inserting case details-->' + ex.getStackTraceString());
+            }
+        }
+        else
+        {                  
+            Account account = [select FirstName, LastName, PersonEmail,
+                               Phone,ShippingStreet,ShippingCity,ShippingState,
+                               ShippingPostalCode from Account where id = :accountLst[0].Id and PersonEmail != 'help@ames.com'];
+			system.debug('firstname ==> ' +account.FirstName);
+			system.debug('lastname ==> ' +account.LastName);
+			system.debug('personemail ==> ' +account.PersonEmail);
+
+            try
+            {                
+                if(String.isNotBlank(emailId))
+                {
+                    system.debug('@@farooq --> person account '+emailId);
+                 account.PersonEmail = emailId;
+                }
+                if(String.isNotBlank(Phone))
+                 account.Phone = Phone;
+                if(String.isNotBlank(address))
+                 account.ShippingStreet = address + ',' + address2;
+                if(String.isNotBlank(city))
+                 account.ShippingCity = city;
+                if(String.isNotBlank(state))
+                 account.ShippingState = state;
+                if(String.isNotBlank(postalcode))
+                 account.ShippingPostalCode = postalcode;
+                 account.ShippingCountry = 'United States';
+                
+                account.PersonHasOptedOutOfEmail=true;
+                update account;
+				system.debug('account ===> ' + accountLst[0].Id);
+    			system.debug('account.PersonHasOptedOutOfEmail' + account.PersonHasOptedOutOfEmail);
+				
+            }
+            catch(Exception ex)
+            {
+                system.debug('exception occured while updating case details-->' + ex.getMessage());
+                system.debug('exception occured while updating case details-->' + ex.getStackTraceString());
+            }             
+            system.debug('firstname ==> ' +account.FirstName);
+			system.debug('lastname ==> ' +account.LastName);
+			system.debug('personemail ==> ' +account.PersonEmail);           
+			
+        }
+		return accountLst[0].Id;
+		
+    } 
+
+	
+    
+    @TestVisible
+    Private String GetCategory(String emailBody)
+    {
+        List<CategoryRegex__mdt> lCat = [select Label,CategoryRegex__c from CategoryRegex__mdt];
+        emailBody = emailBody.replaceAll('\r\n|\n|\r',' '); 
+        String subcat;
+        String pickListVal;
+        for(CategoryRegex__mdt cat: lCat)
+        {
+            subcat = FindCategory(cat.CategoryRegex__c,emailBody);
+            System.debug('Email Body :' + emailBody);
+            System.debug('Category Regex :' + cat.CategoryRegex__c);
+            if(String.isNotBlank(subcat))
+            {
+                System.debug('Cat and Subcat values :' + cat.Label + '|' + subcat);
+                return pickListVal = cat.Label + '|' + subcat; 
+            }
+           
+        } 
+        return pickListVal;         
+    }
+    
+    @TestVisible
+    private string FindCategory(string regex, string emailBody)
+    {   
+        string match;
+        try
+        {   
+            Matcher matcher=Pattern.compile(regex).matcher(emailBody);
+            boolean foundmatch = matcher.find();        
+            if(foundmatch)
+            {
+               match =  matcher.group(2);
+            }
+        }
+        Catch(Exception ex)
+        { 
+           System.debug('exception cause:' + ex.getMessage());
+            return match;
+        }
+        return match;
+    }
+    
+    @TestVisible
+    Private String PurchaseFrom(String regex, String emailBody)
+    { 
+         String val;    
+        try
+        {
+            emailBody = emailBody.replaceAll('\r\n|\n|\r',' ');                     
+            Matcher matcher=Pattern.compile(regex).matcher(emailBody);
+            boolean foundmatch = matcher.find();
+            if(foundmatch)
+            {
+                val = matcher.group(2);
+                System.debug('purchase from val ' + val);
+                if(Val != null)
+                {
+                    val = val.trim();
+                }
+            }
+        }
+        Catch(Exception ex)
+        {            
+            System.debug('exception cause:' + ex.getCause());
+            System.debug('exception cause:' + ex.getMessage());
+        }
+        return val;
+    }   
+}
+
+============================================================
