@@ -1,0 +1,300 @@
+<template>
+    <lightning-card title="Insert Deductions">
+        <template if:true={showForm}>
+            <div>
+                <div>
+                    <p>Opportunity Name: {opportunityName}</p>
+                    <p>Account Name: {accountName}</p>
+                </div>
+                <template for:each={deductions} for:item="deduction" for:index="index">
+                    <div key={deduction.key}>
+                        <lightning-input label="Deduction Name" value={deduction.deductionName} 
+                                         onchange={handleDeductionNameChange} data-key={deduction.key}></lightning-input>
+                        <lightning-input label="Amount" type="number" step="0.01" value={deduction.amount} 
+                                         onchange={handleAmountChange} data-key={deduction.key}></lightning-input>
+                        <lightning-button label="Remove Row" 
+                                          onclick={removeRow} 
+                                          data-key={deduction.key} 
+                                          variant="destructive"></lightning-button>
+                    </div>
+                </template>
+                <lightning-button label="Add Row" onclick={addRow} variant="brand"></lightning-button>
+                <lightning-button label="Insert Deductions" onclick={insertDeductions} variant="brand"></lightning-button>
+            </div>
+        </template>
+        <template if:false={showForm}>
+            <lightning-button label="Add Deduction" onclick={showFormOnClick} variant="brand"></lightning-button>
+        </template>
+    </lightning-card>
+</template>
+
+
+==============================================================================================================================================
+
+import { LightningElement, track, api, wire } from 'lwc';
+import { getRecord } from 'lightning/uiRecordApi';
+import insertDeduction from '@salesforce/apex/DeductionClass.insertDeduction';
+ 
+export default class TaskDeduction1 extends LightningElement {
+    @track deductions = [{key: 0, deductionName: '', amount: '', opportunityName: '', accountName: ''}];
+    nextKey = 1;
+    showForm = false;
+ 
+    @api recordId;
+    opportunityName;
+    accountId;
+ 
+    @wire(getRecord, { recordId: '$recordId', fields: ['Opportunity.Id', 'Opportunity.AccountId','Opportunity.Name','Opportunity.Account.Name'] })
+    wiredRecord({ error, data }) {
+        if (data) {
+            this.opportunityName = data.fields.Name.value;
+            console.log(this.opportunityName = data.fields.Name.value);
+            this.accountName =  data.fields.Account.value.fields.Name.value;;
+             console.log(this.accountId = data.fields.AccountId.value);
+        } else if (error) {
+            console.error('Error loading record data: ', error);
+            // Handle error, display message to user or handle it appropriately
+        }
+    }
+ 
+    handleDeductionNameChange(event) {
+        const key = event.target.dataset.key;
+        const index = this.deductions.findIndex(deduction => deduction.key == key);
+        this.deductions[index].deductionName = event.target.value;
+    }
+ 
+    handleAmountChange(event) {
+        const key = event.target.dataset.key;
+        const index = this.deductions.findIndex(deduction => deduction.key == key);
+        this.deductions[index].amount = event.target.value;
+    }
+ 
+    addRow() {
+        this.deductions.push({ key: this.nextKey++, deductionName: '', amount: '', opportunityName: '', accountName: '' });
+    }
+ 
+    removeRow(event) {
+        const key = event.target.dataset.key;
+        this.deductions = this.deductions.filter(deduction => deduction.key != key);
+    }
+ 
+    insertDeductions() {
+        const promises = this.deductions.map(deduction => {
+            return insertDeduction({
+                name: deduction.deductionName,
+                amount: deduction.amount,
+                opportunityId: this.recordId,
+                accountId: this.accountId
+            });
+        });
+ 
+        Promise.all(promises)
+            .then(() => {
+                this.deductions = [{key: 0, deductionName: '', amount: '', opportunityName: '', accountName: ''}];
+                this.showForm = false;
+                console.log('Deductions inserted successfully.');
+            })
+            .catch(error => {
+                console.error('Error inserting deductions: ', error);
+                // Display error message to user or handle it appropriately
+            });
+    }
+ 
+    showFormOnClick() {
+        this.showForm = true;
+    }
+ 
+ 
+    
+ 
+    // Getter to dynamically calculate the URL for the Account record page
+    get accountRecordUrl() {
+        return `/lightning/r/Account/${this.opportunityName}/view`;
+    }
+}
+
+=======================================================================================================================================
+
+import { LightningElement, api } from 'lwc';
+import { ShowToastEvent } from 'lightning/platformShowToastEvent';
+export default class ParentComponent extends LightningElement {
+    currentStep = 1
+    renderlast = false;
+    resultHyd
+    resultBangalore
+    resultDelhi
+    resultKerala
+    resultGoa
+
+    @api renderPage;
+    details = []
+
+    // connectedCallback() {
+    //     if (this.renderPage != '' && this.renderPage) {
+    //         this.currentStep = this.renderPage;
+    //     }
+    // }
+    get isHydDetails() {
+        return this.currentStep === 1;
+    }
+    get isBangaloreDetails() {
+        return this.currentStep === 2;
+    }
+    get isDelhiDetails() {
+        return this.currentStep === 3;
+    }
+    get isKeralaDetails() {
+        return this.currentStep === 4;
+    }
+    get isGoaDetails() {
+        return this.currentStep === 5;
+    }
+
+
+    hydHandler(event) {
+    
+       
+        if (event.detail.forward) {
+            this.currentStep = 2;
+            this.details.push({ id: event.detail.id, know: event.detail.hyderabad, rating: event.detail.rating, comments: event.detail.comments })
+        }
+        
+        console.log('this.details ', this.details)
+    }
+
+
+    bangaloreHandler(event) {
+        console.log('this.details ', this.details)
+        if (event.detail.forward) {
+            this.details.push({ id: event.detail.id, know: event.detail.bangalore, rating: event.detail.rating, comments: event.detail.comments })
+            this.currentStep = 3;
+        } else {
+            this.currentStep = 1;
+            this.resultHyd = this.details.filter(item => item.id === "Hyderabad")
+            let index=this.details.findIndex(item=>item.id==='Hyderabad')
+             this.details=this.details.slice(0,index)
+            
+        }
+    }
+
+
+    delhiHandler(event) {
+        console.log('this.details ', this.details)
+        if (event.detail.forward) {
+            this.details.push({ id: event.detail.id, know: event.detail.delhi, rating: event.detail.rating, comments: event.detail.comments })
+            this.currentStep = 4;
+        } else {
+            this.currentStep = 2;
+            this.resultBangalore = this.details.filter(item => item.id === "Bangalore")
+            let index=this.details.findIndex(item=>item.id==='Bangalore')
+             this.details=this.details.slice(0,index)
+        }
+    }
+
+
+    keralaHandler(event) {
+        console.log('this.details ', this.details)
+        if (event.detail.forward) {
+            this.details.push({ id: event.detail.id, know: event.detail.kerala, rating: event.detail.rating, comments: event.detail.comments })
+            this.currentStep = 5;
+        } else {
+            this.currentStep = 3;
+            this.resultDelhi = this.details.filter(item => item.id === "Delhi")
+            let index=this.details.findIndex(item=>item.id==='Delhi')
+             this.details=this.details.slice(0,index)
+        }
+    }
+
+
+    goaHandler(event) {
+       
+        console.log('this.details ', this.details)
+        if (event.detail.forward) {
+            this.showToast('Success','Your Details are Saved Successfully','success')
+             this.details.push({ id: event.detail.id, know: event.detail.goa, rating: event.detail.rating, comments: event.detail.comments })
+             this.renderlast=true
+        }else{
+            this.currentStep=4;
+            this.resultKerala = this.details.filter(item => item.id === "Kerala")
+            let index=this.details.findIndex(item=>item.id==='Kerala')
+             this.details=this.details.slice(0,index)
+        }
+    }
+
+        showToast(title,message,variant){
+        this.dispatchEvent(new ShowToastEvent({
+            title:title,
+            message:message,
+            variant:variant
+        }))
+    }
+
+}
+
+============================================================================================================================================
+
+<template>
+    <lightning-card title="India Tour" >
+        <template if:false={renderlast}>
+            <template if:true={isHydDetails}>
+                <c-first-child-component onhyderabad={hydHandler} record={resultHyd}></c-first-child-component>
+            </template>
+            <template if:true={isBangaloreDetails}>
+                <c-second-child-component onbangalore={bangaloreHandler} record={resultBangalore}></c-second-child-component>
+            </template>
+            <template if:true={isDelhiDetails}>
+                <c-third-child-component ondelhi={delhiHandler} record={resultDelhi}></c-third-child-component>
+            </template>
+            <template if:true={isKeralaDetails}>
+                <c-four-child-component onkerala={keralaHandler} record={resultKerala}></c-four-child-component>
+            </template>
+            <template if:true={isGoaDetails}>
+                <c-fifth-child-component ongoa={goaHandler} record={resultGoa}></c-fifth-child-component>
+            </template>
+        </template>
+        <template if:true={renderlast}>
+            
+
+            <div class="slds-box slds-theme–default">
+                <table class="slds-table slds-table_cell-buffer slds-table_bordered slds-table_striped">
+                    <thead>
+                        <tr class="slds-line-height_reset">
+                            <th class="" scope="col">
+                                Type
+                            </th>
+                            <th class="" scope="col">
+                                Known
+                            </th>
+                            <th class="" scope="col">
+                                Rating
+                            </th>
+                            <th class="" scope="col">
+                                Comments
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template iterator:it={details}>
+                            <tr class="slds-hint-parent" key={it.value.id}>
+                                <td data-label="Spec File">
+                                    <div class="slds-cell-wrap">{it.value.id}</div>
+                                </td>
+                                <td data-label="Spec File">
+                                    <div class="slds-cell-wrap">{it.value.know}</div>
+                                </td>
+                                <td data-label="File Name">
+                                    <div class="slds-cell-wrap">{it.value.rating}</div>
+                                </td>
+                                <td data-label="File Type">
+                                    <div class="slds-cell-wrap">{it.value.comments}</div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+                <p style="text-align: center;font-size: medium;font-weight: bold;background-color: lightblue;"> Thank You...</p>
+            </div>
+        </template>
+    </lightning-card>
+</template>
+==================================================================================================================================================
