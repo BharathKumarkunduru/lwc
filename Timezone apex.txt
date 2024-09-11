@@ -1,0 +1,31 @@
+trigger UpdateTimezonePicklist on Your_Object__c (before insert, before update) {
+    // Map to store user Ids and their corresponding timezones
+    Map<Id, String> userIdToTimezone = new Map<Id, String>();
+    
+    // Fetch all the User Ids for the current records
+    Set<Id> userIds = new Set<Id>();
+    for (Your_Object__c obj : Trigger.new) {
+        userIds.add(obj.OwnerId);
+    }
+    
+    // Query Users to get their timezones
+    List<User> users = [SELECT Id, Country, TimeZoneSidKey FROM User WHERE Id IN :userIds];
+    
+    // Populate the userIdToTimezone map with user timezones
+    for (User user : users) {
+        String timezone;
+        if (user.Country == 'India') {
+            timezone = 'India Time';
+        } else {
+            timezone = 'US Time';
+        }
+        userIdToTimezone.put(user.Id, timezone);
+    }
+    
+    // Update the picklist field on the records with the corresponding timezone
+    for (Your_Object__c obj : Trigger.new) {
+        if (userIdToTimezone.containsKey(obj.OwnerId)) {
+            obj.AvailableSlots__c = userIdToTimezone.get(obj.OwnerId);
+        }
+    }
+}

@@ -1,0 +1,311 @@
+@isTest
+public class ContactWithImageController2Test {
+    @isTest
+    static void testTrackingApp() {
+        // Test data setup
+        String testEmail = 'test@example.com';
+        RecordType patientsRecordType = [SELECT Id FROM RecordType WHERE SObjectType = 'Contact' AND Name = 'Patients' LIMIT 1];
+        Contact testContact = new Contact(Email = testEmail, RecordTypeId = patientsRecordType.Id);
+        insert testContact;
+
+        // Call the method
+        Test.startTest();
+        List<Contact> result = ContactWithImageController2.trackingApp(testEmail);
+        Test.stopTest();
+
+        // Assertions
+        System.assertEquals(1, result.size(), 'Expected one contact to be returned');
+        System.assertEquals(testContact.Id, result[0].Id, 'Returned contact should match the test contact');
+    }
+
+    @isTest
+    static void testCancelAppointment() {
+        // Test data setup
+        String testAppointmentId = '0032t00000OuvGHAAZ'; // Replace with a valid Contact Id of a patient
+        String testEmail = 'test@example.com';
+        RecordType patientsRecordType = [SELECT Id FROM RecordType WHERE SObjectType = 'Contact' AND Name = 'Patients' LIMIT 1];
+        Contact testContact = new Contact(Id = testAppointmentId, Status__c = 'Scheduled', SlotsAvailable__c = '19:30 - 20:00', RecordTypeId = patientsRecordType.Id);
+        insert testContact;
+
+        // Call the method
+        Test.startTest();
+        List<Contact> result = ContactWithImageController2.cancelAppointment(testAppointmentId, testEmail);
+        Test.stopTest();
+
+        // Assertions
+        System.assertEquals(1, result.size(), 'Expected one contact to be returned');
+        System.assertEquals('Expired/Cancelled', result[0].Status__c, 'Status should be set to Expired/Cancelled');
+        System.assertEquals('19:30 - 20:00', result[0].CancelledSlot__c, 'Cancelled slot should match the original slot');
+        System.assertEquals('', result[0].SlotsAvailable__c, 'SlotsAvailable__c should be empty');
+    }
+
+    @isTest
+    static void testGetContacts() {
+        // Test data setup
+        // Create test Contact records with the appropriate values for testing getContacts
+        RecordType doctorsRecordType = [SELECT Id FROM RecordType WHERE SObjectType = 'Contact' AND Name = 'Doctors' LIMIT 1];
+        Contact testContact1 = new Contact(FirstName = 'John', LastName = 'Doe', Email = 'john.doe@example.com', Location__c = 'Visakhapatnam', Specialty__c = 'ENT', RecordTypeId = doctorsRecordType.Id);
+        Contact testContact2 = new Contact(FirstName = 'Jane', LastName = 'Smith', Email = 'jane.smith@example.com', Location__c = 'Visakhapatnam', Specialty__c = 'ENT', RecordTypeId = doctorsRecordType.Id);
+        insert new List<Contact> { testContact1, testContact2 };
+
+        // Call the method
+        Test.startTest();
+        List<ContactWithImageController2.ContactWithImageData> result = ContactWithImageController2.getContacts('John', 'ENT', 'Visakhapatnam');
+        Test.stopTest();
+
+        // Assertions
+        System.assertEquals(1, result.size(), 'Expected one contact to be returned');
+        ContactWithImageController2.ContactWithImageData contactData = result[0];
+        System.assertEquals(testContact1.Id, contactData.Id, 'Contact Id should match');
+        System.assertEquals(testContact1.FirstName, contactData.FirstName, 'First Name should match');
+        System.assertEquals(testContact1.LastName, contactData.LastName, 'Last Name should match');
+        System.assertEquals(testContact1.Email, contactData.Email, 'Email should match');
+        System.assertEquals(testContact1.Location__c, contactData.Location, 'Location should match');
+        System.assertEquals(testContact1.Specialty__c, contactData.Specialty, 'Specialty should match');
+    }
+}
+
+===================================================================================================
+
+25%
+
+@isTest
+public class ContactWithImageController2Test {
+
+    @isTest
+    public static void testTrackingApp() {
+        // Test data setup
+        Contact testContact = new Contact(LastName='kumar',Email = 'test@example.com', RecordType = new RecordType(Name = 'Patients'));
+        insert testContact;
+
+        // Call the method
+        Test.startTest();
+        List<Contact> resultContacts = ContactWithImageController2.trackingApp('test@example.com');
+        Test.stopTest();
+
+        // Assertions
+        System.assertEquals(1, resultContacts.size());
+        Contact resultContact = resultContacts[0];
+        System.assertEquals('test@example.com', resultContact.Email);
+        // Add more assertions for other fields as needed
+    }
+
+    @isTest
+    public static void testCancelAppointment() {
+        // Test data setup
+        Contact testContact = new Contact(LastName='kumar',Email = 'test@example.com', RecordType = new RecordType(Name = 'Patients'), Status__c = 'Scheduled', SlotsAvailable__c = '12:00 - 12:30', CancelledSlot__c = '10:00 - 10:30');
+        insert testContact;
+
+        // Call the method
+        Test.startTest();
+        List<Contact> resultContacts = ContactWithImageController2.cancelAppointment(testContact.Id, 'test@example.com');
+        Test.stopTest();
+
+        // Assertions
+        System.assertEquals(1, resultContacts.size());
+        Contact resultContact = resultContacts[0];
+        System.assertEquals('Expired/Cancelled', resultContact.Status__c);
+        System.assertEquals('12:00 - 12:30', resultContact.CancelledSlot__c);
+        System.assertEquals('', resultContact.SlotsAvailable__c);
+        // Add more assertions for other fields as needed
+    }
+
+    @isTest
+    public static void testGetContacts() {
+        // Test data setup
+        // Create some test Contacts with different specialties and locations
+        Contact doctorContact1 = new Contact(FirstName = 'John', LastName = 'Doe', RecordType = new RecordType(Name = 'Doctors'), Specialty__c = 'ENT', Location__c = 'Visakhapatnam');
+        Contact doctorContact2 = new Contact(FirstName = 'Jane', LastName = 'Smith', RecordType = new RecordType(Name = 'Doctors'), Specialty__c = 'Orthopedic', Location__c = 'Mumbai');
+        Contact nonDoctorContact = new Contact(FirstName = 'Test', LastName = 'User', RecordType = new RecordType(Name = 'Other Record Type'));
+
+        insert new List<Contact>{ doctorContact1, doctorContact2, nonDoctorContact };
+
+        // Call the method with different search values
+        Test.startTest();
+        List<ContactWithImageController2.ContactWithImageData> results1 = ContactWithImageController2.getContacts('John', '', '');
+        List<ContactWithImageController2.ContactWithImageData> results2 = ContactWithImageController2.getContacts('', 'ENT', '');
+        List<ContactWithImageController2.ContactWithImageData> results3 = ContactWithImageController2.getContacts('', '', 'Visakhapatnam');
+        Test.stopTest();
+
+        // Assertions
+        System.assertEquals(1, results1.size());
+        System.assertEquals(1, results2.size());
+        System.assertEquals(1, results3.size());
+
+        // Add more assertions for other fields as needed
+    }
+}
+
+=======================================================================================================================
+
+62%
+
+@isTest
+public class ContactWithImageController2Test {
+    @isTest
+    static void testTrackingApp() {
+        Contact testContact = new Contact(
+            FirstName = 'John',
+            LastName = 'Doe',
+            Email = 'john.doe@example.com',
+            RecordTypeId = Schema.SObjectType.Contact.getRecordTypeInfosByName().get('Patients').getRecordTypeId()
+        );
+        insert testContact;
+
+        List<Contact> result = ContactWithImageController2.trackingApp('john.doe@example.com');
+        System.assertEquals(1, result.size());
+        System.assertEquals('John', result[0].FirstName);
+    }
+
+    @isTest
+    static void testCancelAppointment() {
+        Contact testContact = new Contact(
+            FirstName = 'Jane',
+            LastName = 'Smith',
+            Email = 'jane.smith@example.com',
+            RecordTypeId = Schema.SObjectType.Contact.getRecordTypeInfosByName().get('Patients').getRecordTypeId()
+        );
+        insert testContact;
+
+        testContact = [SELECT Id, SlotsAvailable__c, Status__c, CancelledSlot__c FROM Contact WHERE Id = :testContact.Id];
+
+        System.assertNotEquals(null, testContact.SlotsAvailable__c);
+
+        List<Contact> result = ContactWithImageController2.cancelAppointment(testContact.Id, testContact.Email);
+        System.assertEquals(1, result.size());
+        System.assertEquals('Expired/Cancelled', result[0].Status__c);
+        System.assertEquals(testContact.SlotsAvailable__c, result[0].CancelledSlot__c);
+        System.assertEquals('', result[0].SlotsAvailable__c);
+    }
+
+    @isTest
+    static void testGetContacts() {
+        Account testAccount = new Account(Name = 'Test Account');
+        insert testAccount;
+
+        Contact testContact1 = new Contact(
+            FirstName = 'John',
+            LastName = 'Doe',
+            Email = 'john.doe@example.com',
+            RecordTypeId = Schema.SObjectType.Contact.getRecordTypeInfosByName().get('Doctors').getRecordTypeId(),
+            Specialty__c = 'ENT',
+            Location__c = 'Mumbai'
+        );
+        insert testContact1;
+
+        Contact testContact2 = new Contact(
+            FirstName = 'Jane',
+            LastName = 'Smith',
+            Email = 'jane.smith@example.com',
+            RecordTypeId = Schema.SObjectType.Contact.getRecordTypeInfosByName().get('Doctors').getRecordTypeId(),
+            Specialty__c = 'Pediatric',
+            Location__c = 'Pune'
+        );
+        insert testContact2;
+
+        List<ContactWithImageController2.ContactWithImageData> result1 = ContactWithImageController2.getContacts('John', null, null);
+        System.assertEquals(1, result1.size());
+        System.assertEquals('John', result1[0].FirstName);
+
+        List<ContactWithImageController2.ContactWithImageData> result2 = ContactWithImageController2.getContacts(null, 'ENT', null);
+        System.assertEquals(1, result2.size());
+        System.assertEquals('Jane', result2[0].FirstName);
+
+        List<ContactWithImageController2.ContactWithImageData> result3 = ContactWithImageController2.getContacts(null, null, 'Visakhapatnam');
+        System.assertEquals(1, result3.size());
+        System.assertEquals('Jane', result3[0].FirstName);
+
+        List<ContactWithImageController2.ContactWithImageData> result4 = ContactWithImageController2.getContacts(null, 'Internal Medicine', 'Pune');
+        System.assertEquals(1, result4.size());
+        System.assertEquals('John', result4[0].FirstName);
+    }
+}
+========================================================================================================
+@isTest
+public class ContactWithImageController2Test {
+
+    @isTest
+    static void testGetContacts() {
+        // Create test data for Contact records
+        List<Contact> testContacts = new List<Contact>();
+        for (Integer i = 1; i <= 5; i++) {
+            testContacts.add(new Contact(
+                FirstName = 'Test Contact ' + i,
+                LastName = 'Lastname ' + i,
+                MailingPostalCode = '12345',
+                RecordTypeId = Test.getRecordTypeId(Contact.SObjectType, 'Doctors'),
+                Years_of_experience__c = 5,
+                Specialty__c = 'Specialty ' + i,
+                Email = 'test' + i + '@example.com',
+                Location__c = 'Location ' + i
+            ));
+        }
+        insert testContacts;
+
+        // Create ContentVersion records for each Contact with ContentDocumentLinks
+        List<ContentVersion> testContentVersions = new List<ContentVersion>();
+        for (Contact con : testContacts) {
+            testContentVersions.add(new ContentVersion(
+                VersionData = Blob.valueOf('Test image data'),
+                FileType = 'PNG',
+                ContentDocumentId = createTestContentDocument(con.Id).Id
+            ));
+        }
+        insert testContentVersions;
+
+        // Call the method to be tested
+        Test.startTest();
+        List<ContactWithImageData> result = ContactWithImageController2.getContacts('', '', '');
+        Test.stopTest();
+
+        // Assert the results
+        System.assertEquals(testContacts.size(), result.size());
+        for (Integer i = 0; i < testContacts.size(); i++) {
+            Contact testContact = testContacts[i];
+            ContactWithImageData actualResult = result[i];
+
+            System.assertEquals(testContact.Id, actualResult.contact.Id);
+            System.assertEquals(testContact.FirstName, actualResult.contact.FirstName);
+            System.assertEquals(testContact.LastName, actualResult.contact.LastName);
+            System.assertEquals(testContact.MailingPostalCode, actualResult.contact.MailingPostalCode);
+            System.assertEquals(testContact.AccountId, actualResult.contact.AccountId);
+            System.assertEquals(testContact.Years_of_experience__c, actualResult.contact.Years_of_experience__c);
+            System.assertEquals(testContact.Specialty__c, actualResult.contact.Specialty__c);
+            System.assertEquals(testContact.Email, actualResult.contact.Email);
+            System.assertEquals(testContact.Location__c, actualResult.contact.Location__c);
+
+            if (testContact.ContentDocumentLinks.size() > 0) {
+                ContentVersion expectedContentVersion = testContentVersions[i];
+                ContentVersion actualContentVersion = actualResult.contentVersion;
+                System.assertEquals(expectedContentVersion.VersionData, actualContentVersion.VersionData);
+                System.assertEquals(expectedContentVersion.FileType, actualContentVersion.FileType);
+            } else {
+                System.assertNull(actualResult.contentVersion);
+            }
+        }
+    }
+
+    // Helper method to create test ContentDocumentLink records
+    static ContentDocumentLink createTestContentDocument(Id contactId) {
+        ContentVersion testContentVersion = new ContentVersion(
+            VersionData = Blob.valueOf('Test image data'),
+            FileType = 'PNG'
+        );
+        insert testContentVersion;
+
+        ContentDocument testContentDocument = new ContentDocument(
+            Title = 'Test Document',
+            FileTypeId = testContentVersion.FileType
+        );
+        insert testContentDocument;
+
+        return new ContentDocumentLink(
+            LinkedEntityId = contactId,
+            ContentDocumentId = testContentDocument.Id,
+            ShareType = 'I'
+        );
+    }
+}
+
+
+

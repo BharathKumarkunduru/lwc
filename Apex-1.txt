@@ -1,0 +1,297 @@
+public with sharing class AccountController {
+    @AuraEnabled(cacheable=true)
+    public static List<Account> getAccountData() {
+        return [SELECT Id, Name, Phone, Website FROM Account LIMIT 10];
+       
+    }
+}
+
+==============================================================================================
+public with sharing class ApexClassController {
+    @AuraEnabled
+    public static void updateDoctorRecord(Map<String, Object> doctorData) {
+        try {
+            Doctor__c doctorRecord = new Doctor__c(
+                Id = (String)doctorData.get('Id'),
+                Name = (String)doctorData.get('Name'),
+                Phone__c = (String)doctorData.get('Phone__c'),
+                Email__c = (String)doctorData.get('Email__c'),
+                Image_Url__c = (String)doctorData.get('Image_Url__c'),
+                Specialty__c = (String)doctorData.get('Specialty__c'),
+                Description__c = (String)doctorData.get('Description__c')
+                // Add other fields as needed
+            );
+            update doctorRecord;
+        } catch (Exception ex) {
+            throw new AuraHandledException('Error while updating the Doctor record: ' + ex.getMessage());
+        }
+    }
+}
+
+==============================================================================================================
+public class AppointmentController {
+    @AuraEnabled(cacheable=true)
+    public static List<Appointment__c> getDoctorAppointments(String doctorUserEmail) {
+       
+        return [SELECT Id, Name, Doctor__c, Appointment_Date__c, Status__c, SlotsAvailable__c, Contact__c 
+                FROM Appointment__c
+                WHERE Doctor__r.Email__c = :doctorUserEmail];
+    }
+
+}
+==================================================================================================================
+
+public class AppointmentBookingController {
+
+   @AuraEnabled
+    public static void createPatientRecord(Patient__c patient) {
+        insert patient;
+    }
+}
+
+===================================================================================================================
+public with sharing class ShowDoctorData {
+
+    @AuraEnabled(cacheable=true)
+    public static List<Doctor__c> retrieveDoctors(String doctortext,String specilaty,String location){
+        
+        String query = 'SELECT Id, Name, Location__c, Email__c, Specialty__c, DoctorId__c,Languages_Known__c,Image_Url__c,Description__c, Experience__c FROM Doctor__c';
+        if(doctortext !='' || specilaty !='' || location!=''){
+           query+=' WHERE ';
+            if(doctortext !=''){
+                query+='Name LIKE \'%' + doctortext + '%\'';
+                if(specilaty !='' || location !='' ){
+                    query+=' AND ';
+                }
+            }
+             if(specilaty !=''){
+                query+= 'Specialty__c = \'' + specilaty + '\'';
+                  if(location !='' ){
+                    query+=' AND ';
+                }
+            }
+             if(location !=''){
+                query+='Location__c = \'' + location + '\'';
+            }
+        }
+        system.debug('query-> '+query);
+         List<Doctor__c> allDoctorData = database.query(query);
+        return allDoctorData; 
+    }
+    @AuraEnabled(cacheable=true)
+    public static Boolean getUserLoginStatus() {
+        return UserInfo.getSessionId() != null;
+    }
+}
+
+=================================================================================================================
+public class BookAppointment {
+    
+    @AuraEnabled
+    public static Appointment__c myappointment(Appointment__c patientObj,Contact contactUpdate){
+        system.debug('the appointment is '+ patientObj);
+        //Contact c=[Select Id,Name,Email from Contact where Email=:UserInfo.getUserEmail() limit 1];
+        //Contact c=[Select Id,Name,Email from Contact where Email=:loginUser limit 1];
+       Contact contactToUpdate =contactUpdate;
+        Appointment__c Appoin = patientObj ;
+			system.debug('contactUpdate-> '+contactUpdate);
+            if(Appoin.Appointment_Date__c!=null || contactUpdate !=null){
+                try{
+                    system.debug('about to book'+Appoin);
+                    insert Appoin ;
+                    update contactToUpdate;
+                }
+                catch (exception e){
+                    system.debug('error'+e);
+                }
+            }
+            return Appoin ; 
+        
+    }
+    
+    @AuraEnabled(cacheable=true)
+    public static Contact userContactDetails(String loginUser){
+        Contact c=[Select Id,Name,Email,Date_Of_Birth__c,Phone,Age__c,Gender__c,Address__c,Appointment_No__c  from Contact where Email=:loginUser limit 1];
+        return c;
+    }
+    
+}
+============================================================================================================================
+public class Patient_Records {
+    @AuraEnabled(cacheable=true)
+    public static List<Patient__c> fetchPatients(){
+        return [SELECT Id, Name, Email__c, Appointment_Date__c, AccountId__c,Age__c, Phone__c, SlotsAvailable__c,
+                Appointment_No__c, Consult_doctor__c,Gender__c,
+                Status__c, Image_Url__c, First_Name__c, Last_Name__c FROM Patient__c];
+        
+    }
+    @AuraEnabled(cacheable=true)
+    public static List<String> getAvailableSlots(String selectedDate, string doctorid) {
+        System.debug('the doctor id was '+doctorid);
+        system.debug('selected date was '+selectedDate);
+     
+        // Convert the selectedDate string to a Date value
+        Date appointmentDate = Date.valueOf(selectedDate);
+        Map<String, Id> patientsMap = new Map<String, Id>();
+       
+        
+        Date today = System.today();
+        string datetoday = string.valueOf(today);
+        
+
+        
+        List<Appointment__c> allAppointmenst = [SELECT Id , Name , Appointment_Date__c , Contact__c , Doctor__c , SlotsAvailable__c from Appointment__c where Appointment_Date__c =:appointmentDate AND Doctor__c =:doctorid];
+        if(!allAppointmenst.isEmpty()){
+            System.debug('patients are not empty');
+        } else {
+            System.debug('patients are empty');
+        }
+        for(Appointment__c patient : allAppointmenst){
+            System.debug('patient--> '+patient);
+            patientsMap.put(patient.SlotsAvailable__c, patient.Id);
+        }
+        
+        
+        List<String> availableSlots = new List<String>();
+        List<Shifttimings__c> shiftTimingsList = [ SELECT Id, Shift_time__c  FROM Shifttimings__c ORDER BY CreatedDate ASC ]; 
+        for(Shifttimings__c ss : shiftTimingsList){
+            System.debug('the shift timings was '+ss.Shift_time__c);
+            availableSlots.add(ss.Shift_time__c);
+        }
+        
+        Time currentTime = System.now().time();
+        // Convert Time to String using String.valueOf() method
+        String currentTimeString = String.valueOf(currentTime);
+        system.debug('currentTimeString--> '+currentTimeString);
+        
+        List<String> slotsToRemove = new List<String>();
+        
+        if(selectedDate == datetoday ){
+            for(String slot : availableSlots){
+                
+                if(slot>=currentTimeString){
+                    if(!patientsMap.containsKey(slot)){
+                        slotsToRemove.add(slot);
+                    }
+                }
+                
+            } 
+        }else{
+            for(String slot : availableSlots){
+                if(!patientsMap.containsKey(slot)){
+                    slotsToRemove.add(slot);
+                } 
+            }
+        }
+        
+        
+       
+        system.debug('Available slots are  '+slotsToRemove);
+        
+        return slotsToRemove;
+    }
+    @AuraEnabled
+    public static Patient__c createPatient(Patient__c patientObj){
+        System.debug('from lwc'+patientObj);
+        Patient__c cosss = patientObj;
+        cosss.Status__c = 'Scheduled';
+        //system.debug('the insertion id was '+cosss.RecordTypeId);
+        if(patientObj.Appointment_Date__c !=null){
+            //System.debug('the checked appointment date was '+patientObj.Appointment_Date__c);
+        }
+            try {
+                insert cosss;
+                //return patientObj;
+            } catch (Exception exp) {
+                throw new AuraHandledException(exp.getMessage());
+            }
+        return cosss;
+    }
+    
+}
+==================================================================================================================================
+public with sharing class myAppointment {
+    @AuraEnabled(cacheable=true)
+    
+     public static List<Appointment__c> RelatedRecordsController(string userEmail, String filter) {
+    List<Appointment__c> appointments;
+    if (filter == 'all') {
+        
+        appointments = [SELECT Name, Appointment_Date__c, Doctor__r.Specialty__c,Doctor__r.Name, Contact__c, Contact__r.Name,Contact__r.Email,Contact__r.Phone, SlotsAvailable__c,Status__c 
+        FROM Appointment__c WHERE Contact__r.Email = :userEmail];
+    } else {
+       
+        Date startDate;
+        Date endDate;
+        if (filter == 'today') {
+            startDate = Date.today();
+            endDate = startDate;
+        } else if (filter == 'week') {
+            startDate = Date.today().toStartOfWeek();
+            endDate = startDate.addDays(6);
+        } else if (filter == 'month') {
+            startDate = Date.today().toStartOfMonth();
+            endDate = startDate.addMonths(1).addDays(-1);
+        }
+
+       
+        appointments = [SELECT Name, Appointment_Date__c, Doctor__r.Specialty__c,Doctor__r.Name, Contact__c, Contact__r.Name,Contact__r.Email, SlotsAvailable__c,Status__c 
+        FROM Appointment__c WHERE Contact__r.Email = :userEmail AND CreatedDate >= :startDate AND CreatedDate <= :endDate];
+    }
+
+    return appointments;
+}
+       
+}
+=====================================================================================================================
+
+public class DoctorRelatedAppointments {
+   @AuraEnabled(cacheable=true)
+    
+     public static List<Appointment__c> getRelatedData(Id userId, String filter) {
+    List<Appointment__c> appointments;
+    if (filter == 'all') {
+        
+        appointments = [SELECT Id, Name, Doctor__c, Appointment_Date__c, SlotsAvailable__c, Status__c,
+                Doctor__r.Name, Doctor__r.Email__c, Doctor__r.user__c, Doctor__r.Specialty__c, Contact__r.Name,Contact__r.Gender__c, Contact__r.Email,Contact__r.Age__c,Contact__r.Date_Of_Birth__c
+                FROM Appointment__c
+                WHERE Doctor__r.user__c = :userId];
+    } else {
+       
+        Date startDate;
+        Date endDate;
+        if (filter == 'today') {
+            startDate = Date.today();
+            endDate = startDate;
+        } else if (filter == 'week') {
+            startDate = Date.today().toStartOfWeek();
+            endDate = startDate.addDays(6);
+        } else if (filter == 'month') {
+            startDate = Date.today().toStartOfMonth();
+            endDate = startDate.addMonths(1).addDays(-1);
+        }
+
+       
+        appointments = [SELECT Id, Name, Doctor__c, Appointment_Date__c, SlotsAvailable__c, Status__c,
+                Doctor__r.Name, Doctor__r.Email__c, Doctor__r.user__c, Contact__r.Name,Contact__r.Gender__c, Contact__r.Email,Contact__r.Age__c,Contact__r.Date_Of_Birth__c
+                FROM Appointment__c
+                WHERE Doctor__r.user__c = :userId AND CreatedDate >= :startDate AND CreatedDate <= :endDate];
+    }
+
+    return appointments;
+}
+   
+    @AuraEnabled(cacheable=true)
+
+    public static void deleteAccounts(List<Id> accountIds) {
+
+        List<Appointment__c> accountsToDelete = [SELECT Id, Name, Doctor__c, Appointment_Date__c, SlotsAvailable__c, Status__c,
+        Doctor__r.Name, Doctor__r.Email__c, Doctor__r.user__c, Contact__r.Name,Contact__r.Gender__c, Contact__r.Email,Contact__r.Age__c,Contact__r.Date_Of_Birth__c
+        FROM Appointment__c WHERE Id IN :accountIds];
+
+        delete accountsToDelete;
+
+    }
+        
+}
+=================================================================================================================
