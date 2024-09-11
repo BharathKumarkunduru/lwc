@@ -1,0 +1,95 @@
+<template>
+    <lightning-card title="New Contact Form">
+        <!--<lightning-record-form
+            object-api-name="Contact"
+            layout-type="Compact"
+            columns="2"
+            mode="edit"
+            record-id={recordId}
+            onsuccess={handleSuccess}
+            oncancel={handleCancel}
+        ></lightning-record-form>-->
+        
+        <lightning-record-edit-form
+    object-api-name="Contact"
+    
+>
+    <lightning-input-field field-name="Name"> </lightning-input-field>
+    <lightning-input-field field-name="AccountId" value={accountId}> </lightning-input-field>
+    <div class="slds-var-m-top_medium">
+        <lightning-button variant="brand" type="submit" label="Save">
+        </lightning-button>
+    </div>
+</lightning-record-edit-form>
+    </lightning-card>
+</template>
+
+
+===============================================================================================================================================
+
+// contactForm.js
+import { LightningElement, wire,track, api } from 'lwc';
+import { getRecord } from 'lightning/uiRecordApi';
+import getMostRecentAccountId from '@salesforce/apex/ContactController.getMostRecentAccountId';
+import { getObjectInfo } from 'lightning/uiObjectInfoApi';
+
+export default class ContactForm extends LightningElement {
+    @track recordId; // Id of the current Contact record (if editing an existing record)
+    @api recordId;
+    accountId;
+     @wire(getMostRecentAccountId, { contactId: '$recordId' })
+    wiredResult({ data, error }) {
+        if (data) {
+            this.accountId = data;
+            alert(this.accountId);
+            console.log(this.accountId);
+        } else if (error) {
+            // Handle error
+            console.error('Error retrieving most recent AccountId:', error);
+        }
+    }
+     @wire(getRecord, { recordId: '$accountId', fields: FIELDS })
+    wiredAccount({ data, error }) {
+        if (data) {
+            // Extract AccountId from the most recent Account record
+            this.accountId = data.fields.Id.value;
+        } else if (error) {
+            console.error(error);
+        }
+    }
+    //@wire(getObjectInfo, { objectApiName: 'Contact' })
+    //contactObjectInfo;
+
+    handleSuccess(event) {
+        // Handle success event after saving the record
+        console.log('Record saved successfully:', event.detail.id);
+    }
+
+    handleCancel() {
+        // Handle cancel event
+        console.log('Edit form canceled');
+    }
+}
+
+================================================================================================================================
+
+<?xml version="1.0"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+	<apiVersion>57.0</apiVersion>
+	<description> List View Button </description>
+	<isExposed>true</isExposed>
+	<targets>
+		<target>lightning__RecordPage</target>
+		<target>lightning__RecordAction</target>
+		<target>lightning__AppPage</target>
+		<target>lightning__HomePage</target>
+		<target>lightning__Tab</target>
+	</targets>
+	<targetConfigs>
+	<targetConfig targets ="lightning__RecordAction">
+	<actionType> Action</actionType>
+	</targetConfig>
+		</targetConfigs>
+</LightningComponentBundle>
+
+========================================================================================
