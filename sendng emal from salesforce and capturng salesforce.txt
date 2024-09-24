@@ -1,0 +1,921 @@
+public class TestEmails {
+    
+    @AuraEnabled(cacheable=true)  
+    public static List<Interested_Parties__c> fetchOpportunityList(String Status){ 
+        if(Status != ''){
+            return [select Id ,Name , Email__c , Status__c , Phone_Number__c , Bank__c , Source__c from Interested_Parties__c Where Status__c =: Status];  
+        }else{
+            return [select Id ,Name , Email__c , Status__c , Phone_Number__c , Bank__c , Source__c from Interested_Parties__c];  
+        }
+    } 
+    @AuraEnabled
+    public static void sendEmail(List<String> toAddressesIds, String subject, String body,String fileName, String base64Data) {
+        List<Messaging.SingleEmailMessage> lstEmailsToCandidate = new List<Messaging.SingleEmailMessage>();
+        
+        for(String cnd : toAddressesIds)
+        {
+            Messaging.SingleEmailMessage email = new Messaging.SingleEmailMessage();
+            string[] toEmailIDs = new string[]{cnd};
+                email.setToAddresses(toEmailIDs);
+            if(fileName != null && base64Data !=null){
+                Messaging.EmailFileAttachment attachment = new Messaging.EmailFileAttachment();
+                attachment.setFileName(fileName);
+                attachment.setBody(EncodingUtil.base64Decode(base64Data));
+                email.setFileAttachments(new Messaging.EmailFileAttachment[] { attachment });
+            }
+            
+            email.SetSubject(subject);
+            email.SetHTMLBody(body);
+            email.setReplyTo('emailcreationservice@24czla39p2wo0rr20v8997kl0jnp9e68n6d6lh5yixf3qorjeg.gb-152fu2ai.ap45.apex.salesforce.com');
+            lstEmailsToCandidate.Add(email);
+        }
+        if(! lstEmailsToCandidate.isEmpty())
+        {
+            Messaging.sendEmail(lstEmailsToCandidate);
+        }
+        
+    }
+    
+}
+
+=======================================================================================================================================
+
+@isTest
+public class TestEmailsTestClass {
+    
+    @isTest
+    static void testFetchOpportunityList() {
+        // Create test data
+        //Banks__c cc = [select id , name from Banks__c limit 1];
+        Interested_Parties__c ip1 = new Interested_Parties__c();
+        ip1.Name = 'Test IP 1';
+        ip1.Email__c = 'test1@test.com';
+        ip1.Status__c = 'Closed-Converted';
+        ip1.Phone_Number__c = '9909090101';
+        ip1.Bank__c = 'a002w00000ZWsHHAA1';
+        insert ip1;
+
+        Interested_Parties__c ip2 = new Interested_Parties__c();
+        ip2.Name = 'Test IP 2';
+        ip2.Email__c = 'test2@test.com';
+        ip2.Status__c = 'Closed-Converted';
+        ip2.Phone_Number__c = '9909090101';
+        ip2.Bank__c = 'a002w00000ZWsHHAA1';
+        insert ip2;
+
+        Test.startTest();
+        // Test with Status parameter
+        List<Interested_Parties__c> ipList = TestEmails.fetchOpportunityList('Closed-Converted');
+        System.assertEquals(2, ipList.size());
+
+        // Test without Status parameter
+        ipList = TestEmails.fetchOpportunityList('');
+        System.assertEquals(2, ipList.size());
+
+        Test.stopTest();
+    }
+
+    @isTest
+    static void testSendEmail() {
+        // Banks__c cc = [select id , name from Banks__c limit 1];
+        // Create test data
+        Interested_Parties__c ip1 = new Interested_Parties__c();
+        ip1.Name = 'Test IP 1';
+        ip1.Email__c = 'test1@test.com';
+        ip1.Status__c = 'Closed-Converted';
+        ip1.Phone_Number__c = '9909090101';
+        ip1.Bank__c = 'a002w00000ZWsHHAA1';
+        insert ip1;
+
+        Interested_Parties__c ip2 = new Interested_Parties__c();
+        ip2.Name = 'Test IP 2';
+        ip2.Email__c = 'test2@test.com';
+        ip2.Status__c = 'Closed-Converted';
+        ip2.Phone_Number__c = '9909090101';
+        ip2.Bank__c = 'a002w00000ZWsHHAA1';
+        insert ip2;
+
+        // Prepare test email data
+        List<Interested_Parties__c> emails = new List<Interested_Parties__c>{ip1, ip2};
+            List<String> toAddressesIds = new  List<String>();
+        for(Interested_Parties__c o:emails){
+            String email = o.Email__c;
+            toAddressesIds.add(email);
+        }
+        String subject = 'Test Email Subject';
+        String body = 'Test Email Body';
+        String fileName = 'Test Attachment';
+        String base64Data = EncodingUtil.base64Encode(Blob.valueOf('Test Attachment Body'));
+
+        Test.startTest();
+        TestEmails.sendEmail(toAddressesIds, subject, body, fileName, base64Data);
+        Test.stopTest();
+
+        // Assert that the emails were sent
+        List<EmailMessage> sentEmails = [SELECT Id, ToAddress FROM EmailMessage];
+
+        System.assertEquals(2, sentEmails.size());
+        System.assertEquals(ip1.Email__c, sentEmails[0].ToAddress);
+    }
+
+}
+
+==================================================================================================================================
+global class MyEmailService implements Messaging.InboundEmailHandler {
+   
+    global Messaging.InboundEmailResult handleInboundEmail(Messaging.InboundEmail email, Messaging.InboundEnvelope envelope) {
+        Messaging.InboundEmailResult result = new Messaging.InboundEmailResult();
+        
+        try {
+            // Extract relevant data from the email
+            String sender = email.fromAddress;
+            String subject = email.subject;
+            String body = email.plainTextBody;
+            
+            // Query for Interested_Parties__c with the given email address
+            List<Interested_Parties__c> parties = [
+                SELECT Id, Name, Email__c 
+                FROM Interested_Parties__c 
+                WHERE Email__c = :sender 
+                LIMIT 1
+            ];
+            
+            // Query for another custom object, e.g., Customers__c
+            List<Customers__c> customers = [
+                SELECT Id, Name, Email__c 
+                FROM Customers__c 
+                WHERE Email__c = :sender 
+                LIMIT 1
+            ];
+            
+              List<Employee__c> Employee = [
+                SELECT Id, Name, Email__c 
+                FROM Employee__c 
+                WHERE Email__c = :sender 
+                LIMIT 1
+            ];
+            
+              List<Deduction__c> deduction = [
+                SELECT Id, Name, Email__c 
+                FROM Deduction__c 
+                WHERE Email__c = :sender 
+                LIMIT 1
+            ];
+            
+               List<Deleted_Customers__c> deletedCustomers = [
+                SELECT Id, Name, Email__c 
+                FROM Deleted_Customers__c 
+                WHERE Email__c = :sender 
+                LIMIT 1
+            ];
+            
+              List<Job_Posting_Candidate__c> jobPostingCandidate = [
+                SELECT Id, Name, Email__c 
+                FROM Job_Posting_Candidate__c 
+                WHERE Email__c = :sender 
+                LIMIT 1
+            ];
+          
+            // Initialize a variable to hold the matching record, if found
+            Id interestedPartyId = null;
+            Id customerId = null;
+            Id employeeId = null;
+            Id deductionId = null;
+            Id deletedCustomersId = null;
+            Id jobPostingCandidateId = null;
+          
+            
+            
+            // Check if the sender matches Interested_Parties__c
+            if (!parties.isEmpty()) {
+                interestedPartyId = parties[0].Id;
+            }
+            
+            // Check if the sender matches Customers__c
+            if (!customers.isEmpty()) {
+                customerId = customers[0].Id;
+            }
+            
+            if (!Employee.isEmpty()) {
+                employeeId = Employee[0].Id;
+            }
+            if (!deduction.isEmpty()) {
+                deductionId = deduction[0].Id;
+            }
+            if (!deletedCustomers.isEmpty()) {
+                deletedCustomersId = deletedCustomers[0].Id;
+            }
+            if (!jobPostingCandidate.isEmpty()) {
+                jobPostingCandidateId = jobPostingCandidate[0].Id;
+            }
+            
+            
+            if (interestedPartyId != null || customerId != null || employeeId != null || deductionId != null || deletedCustomersId != null || jobPostingCandidateId != null) {
+                // Create email response record
+                Email_Responce__c response = new Email_Responce__c(
+                    Subject__c = subject,
+                    Body__c = body
+                );
+                
+                // Only assign Interested_Parties__c if we found a match
+                if (interestedPartyId != null) {
+                    response.Interested_Parties__c = interestedPartyId;
+                }
+                
+                // Only assign Customers__c if we found a match
+                if (customerId != null) {
+                    response.Customers__c = customerId;
+                }
+                
+                if (employeeId != null) {
+                    response.Employee__c = employeeId;
+                }
+                
+                if (deductionId != null) {
+                    response.Deduction__c = deductionId;
+                }
+                
+                if (jobPostingCandidateId != null) {
+                    response.Job_Posting_Candidate__c = jobPostingCandidateId;
+                }
+              
+                
+                insert response;
+                
+                // Handle binary attachments (PDF, images, etc.)
+                if (email.binaryAttachments != null) {
+                    List<Attachment> binaryAttList = new List<Attachment>();
+                    for (Messaging.Inboundemail.BinaryAttachment file : email.binaryAttachments) {
+                        Attachment attachment = new Attachment();
+                        attachment.Name = file.fileName;
+                        attachment.Body = file.body;
+                        attachment.ParentId = response.Id;
+                        binaryAttList.add(attachment);
+                    }
+                    if (!binaryAttList.isEmpty()) {
+                        insert binaryAttList;
+                    }
+                }
+                
+                // Handle text attachments
+                if (email.textAttachments != null) {
+                    List<Attachment> textAttList = new List<Attachment>();
+                    for (Messaging.Inboundemail.TextAttachment tAttachment : email.textAttachments) {
+                        Attachment attachment = new Attachment();
+                        attachment.Name = tAttachment.fileName;
+                        attachment.Body = Blob.valueOf(tAttachment.body);
+                        attachment.ParentId = response.Id;
+                        textAttList.add(attachment);
+                    }
+                    if (!textAttList.isEmpty()) {
+                        insert textAttList;
+                    }
+                }
+                
+                // Success message
+                result.message = 'Email received and processed successfully.';
+            } else {
+                // No matching record in any custom object
+                result.message = 'Sorry, no matching records found for your email address.';
+            }
+        } catch (Exception ex) {
+            // Set the error message in the email result and log the exception
+            result.message = 'An error occurred while processing the email. Please contact the admin.';
+            System.debug(LoggingLevel.ERROR, ex.getMessage());
+        }
+        
+        return result;
+    }
+}
+========================================================================================================================================================================
+@isTest
+private class MyEmailServiceTest {
+    
+    static testMethod void testHandleInboundEmail() {
+        // Create test data
+        Interested_Parties__c party = new Interested_Parties__c(Name='Test Party', Email__c='test@example.com',Phone_Number__c = '5201506758',Bank__c = 'a002w00000ZWsHHAA1');
+        insert party;
+        Messaging.InboundEmail email = new Messaging.InboundEmail();
+        email.subject = 'Test Subject';
+        email.plainTextBody = 'Test Body';
+        email.fromAddress = 'test@example.com';
+        
+        // Add binary attachment
+        Messaging.Inboundemail.BinaryAttachment binaryAttachment = new Messaging.Inboundemail.BinaryAttachment();
+        binaryAttachment.fileName = 'Test Attachment';
+        binaryAttachment.body = Blob.valueOf('Test Attachment Body');
+        email.binaryAttachments = new Messaging.Inboundemail.BinaryAttachment[] { binaryAttachment };
+            
+            // Add text attachment
+            Messaging.Inboundemail.TextAttachment textAttachment = new Messaging.Inboundemail.TextAttachment();
+        textAttachment.fileName = 'Test Text Attachment';
+        textAttachment.body = 'Test Text Attachment Body';
+        email.textAttachments = new Messaging.Inboundemail.TextAttachment[] { textAttachment };
+            
+            // Call the handleInboundEmail method
+            MyEmailService emailService = new MyEmailService();
+        Messaging.InboundEmailResult result = emailService.handleInboundEmail(email, null);
+        
+        // Verify the results
+        List<Email_Responce__c> responses = [SELECT Interested_Parties__c, Subject__c, Body__c FROM Email_Responce__c];
+        System.assertEquals(1, responses.size());
+        System.assertEquals(party.Id, responses[0].Interested_Parties__c);
+        System.assertEquals(email.subject, responses[0].Subject__c);
+        System.assertEquals(email.plainTextBody, responses[0].Body__c);
+        
+        // Verify attachments
+        List<Attachment> attachments = [SELECT Id, Name, Body, ParentId FROM Attachment];
+        System.assertEquals(2, attachments.size());
+        System.assertEquals(binaryAttachment.fileName, attachments[0].Name);
+        System.assertEquals(binaryAttachment.body, attachments[0].Body);
+        System.assertEquals(responses[0].Id, attachments[0].ParentId);
+        System.assertEquals(textAttachment.fileName, attachments[1].Name);
+        System.assertEquals(Blob.valueOf(textAttachment.body), attachments[1].Body);
+        System.assertEquals(responses[0].Id, attachments[1].ParentId);
+        
+        // Clean up the test data
+        delete attachments;
+        delete responses;
+        delete party;
+        
+    }
+
+}
+
+==================================================================================================================================
+public class mytestingexamplemethod {
+    
+    @AuraEnabled(cacheable=true)
+    public static List<SObjectDetails> getSObject(){
+        List<SObjectDetails> customObjectsWithEmail = new List<SObjectDetails>();
+        Map<String, Schema.SObjectType> schemaMap = Schema.getGlobalDescribe();
+        for (Schema.SObjectType schemaType : schemaMap.values()) {
+            if (schemaType.getDescribe().isCustom()) {
+                // Check if the object has an email field
+                if (schemaType.getDescribe().fields.getMap().containsKey('Email__c')) {
+                    SObjectDetails obj = new SObjectDetails();
+                    obj.apiName = schemaType.getDescribe().getName();
+                    obj.label = schemaType.getDescribe().getLabel();
+                    customObjectsWithEmail.add(obj);
+                }
+            }
+        }
+        System.debug('Custom objects with email field: ' + customObjectsWithEmail);
+        return customObjectsWithEmail;
+    }
+    
+    public class SObjectDetails {
+        @AuraEnabled
+        public String apiName {get; set;}
+        @AuraEnabled
+        public String label {get; set;}
+    }
+    
+    @AuraEnabled(cacheable=true)
+    public static List<SObjectFieldDetails> getSObjectFields(String objectName){
+        System.debug('the object name was '+objectName);
+        List<SObjectFieldDetails> fields = new List<SObjectFieldDetails>();
+        Schema.DescribeSObjectResult describeResult = Schema.getGlobalDescribe().get(objectName).getDescribe();
+        Map<String, Schema.SObjectField> fieldMap = describeResult.fields.getMap();
+        for(Schema.SObjectField field : fieldMap.values()){
+            Schema.DescribeFieldResult fieldDescribeResult = field.getDescribe();
+            if(fieldDescribeResult.getType() == Schema.DisplayType.Picklist){
+                SObjectFieldDetails fieldDetails = new SObjectFieldDetails();
+                fieldDetails.apiName = fieldDescribeResult.getName();
+                fieldDetails.label = fieldDescribeResult.getLabel();
+                List<Schema.PicklistEntry> picklistValues = fieldDescribeResult.getPicklistValues();
+                List<PicklistValueDetails> picklistValueDetails = new List<PicklistValueDetails>();
+                for(Schema.PicklistEntry picklistValue : picklistValues){
+                    PicklistValueDetails picklistValueDetail = new PicklistValueDetails();
+                    picklistValueDetail.value = picklistValue.getValue();
+                    picklistValueDetail.label = picklistValue.getLabel();
+                    picklistValueDetails.add(picklistValueDetail);
+                }
+                fieldDetails.picklistValues = picklistValueDetails;
+                fields.add(fieldDetails);
+            }
+        }
+        return fields;
+    }
+    public class SObjectFieldDetails {
+        @AuraEnabled
+        public String apiName {get; set;}
+        @AuraEnabled
+        public String label {get; set;}
+        @AuraEnabled
+        public List<PicklistValueDetails> picklistValues {get; set;}
+    }
+    public class PicklistValueDetails {
+        @AuraEnabled
+        public String value {get; set;}
+        @AuraEnabled
+        public String label {get; set;}
+    }
+    
+    @AuraEnabled(cacheable=true)
+    public static List<String> getPicklistFieldValues(String objectName, String fieldName){
+        List<String> picklistValues = new List<String>();
+        Schema.DescribeSObjectResult describeResult = Schema.getGlobalDescribe().get(objectName).getDescribe();
+        Map<String, Schema.SObjectField> fieldMap = describeResult.fields.getMap();
+        Schema.SObjectField field = fieldMap.get(fieldName);
+        if(field != null && field.getDescribe().getType() == Schema.DisplayType.Picklist){
+            Schema.DescribeFieldResult fieldDescribeResult = field.getDescribe();
+            List<Schema.PicklistEntry> picklistEntries = fieldDescribeResult.getPicklistValues();
+            for(Schema.PicklistEntry entry : picklistEntries){
+                picklistValues.add(entry.getValue());
+            }
+        }
+        return picklistValues;
+    }
+    
+    @AuraEnabled(cacheable=true)
+    public static List<SObject> getFieldData(String objectName, String fieldName,String Value) {
+        String query;
+        if(Value !='' && Value !=null && fieldName !='' && fieldName !=null){
+            query = 'SELECT Id,Name,Email__c,'+fieldName+' FROM '+objectName+' WHERE '+fieldName+'=:Value AND Email__c !=null' ;
+        }else{
+            query = 'SELECT Id,Name,Email__c FROM '+objectName +' WHERE Email__c !=null' ;
+        }
+        system.debug('query' + query);
+        List<SObject> sObjectResultList = Database.Query(query);
+        return sObjectResultList;
+    }
+    
+    
+}
+
+================================================================================================================================
+
+@isTest
+private class mytestingexamplemethodtestcls {
+     @isTest
+    static void testGetSObject() {
+        // Create a custom object with an Email__c field
+        Customers__c customObj = new Customers__c(Name = 'Customers', Email__c = 'test@example.com',Customer_Bank__c='',Phone__c='9010506758');
+        insert customObj;
+        
+        // Call the getSObject method
+        List<mytestingexamplemethod.SObjectDetails> result = mytestingexamplemethod.getSObject();
+        
+        /* Verify that the result contains the expected object
+        System.assertEquals(7, result.size());
+        mytestingexamplemethod.SObjectDetails obj = result[0];
+        System.assertEquals('Customers__c', obj.apiName);
+        System.assertEquals('Customers', obj.label);
+*/
+    }
+    
+    @isTest
+    static void testGetSObjectFields() {
+        // Create a custom object with a picklist field
+        Interested_Parties__c customObj = new Interested_Parties__c(Name = 'Test Custom Object', Email__c = 'test@example.com', Status__c = 'Closed-Converted',Bank__c='',Phone_Number__c='9010506758');
+        insert customObj;
+        
+        // Call the getSObjectFields method
+        List<mytestingexamplemethod.SObjectFieldDetails> result = mytestingexamplemethod.getSObjectFields('Interested_Parties__c');
+        
+        /* Verify that the result contains the expected field
+        System.assertEquals(3, result.size());
+        mytestingexamplemethod.SObjectFieldDetails field = result[0];
+        System.assertEquals('Status__c', field.apiName);
+        System.assertEquals('Status', field.label);
+        System.assertEquals(4, field.picklistValues.size());
+        mytestingexamplemethod.PicklistValueDetails picklistValue = field.picklistValues[0];
+        System.assertEquals('Closed-Converted', picklistValue.value);
+        System.assertEquals('Closed-Converted', picklistValue.label);
+*/
+    }
+    
+    @isTest
+    static void testGetPicklistFieldValues() {
+        // Create a custom object with a picklist field
+        Interested_Parties__c customObj = new Interested_Parties__c(Name = 'Test Custom Object',Email__c = 'test@example.com', Status__c = 'Closed-Converted',Bank__c='',Phone_Number__c='9010506758');
+        insert customObj;
+        
+        // Call the getPicklistFieldValues method
+        List<String> result = mytestingexamplemethod.getPicklistFieldValues('Interested_Parties__c', 'Status__c');
+        
+        // Verify that the result contains the expected values
+        System.assertEquals(4, result.size());
+        System.assert(result.contains('Closed-Converted'));
+        System.assert(result.contains('Closed-Converted'));
+    }
+    
+    @isTest
+    static void testGetFieldData() {
+        // Create a custom object with an Email__c field
+        Interested_Parties__c customObj = new Interested_Parties__c(Name = 'Test Custom Object', Email__c = 'test@example.com',Bank__c='',Phone_Number__c='9010506758',Status__c='Closed-Converted');
+        insert customObj;
+        
+        // Call the getFieldData method
+        
+        List<SObject> result = mytestingexamplemethod.getFieldData('Interested_Parties__c','Status__c', 'Closed-Converted');
+        
+        // Verify that the result contains the expected record
+        System.assertEquals(1, result.size());
+        Interested_Parties__c obj = (Interested_Parties__c) result[0];
+        System.assertEquals('Test Custom Object', obj.Name);
+        System.assertEquals('test@example.com', obj.Email__c);
+    }
+
+}
+
+==========================================================================================================================
+
+<template>
+	<lightning-card title="Custom Objects" icon-name="custom:custom63">
+		<lightning-layout multiple-rows>
+			<lightning-layout-item size="1">
+			</lightning-layout-item>
+			<lightning-layout-item size="3" style="margin:20px">
+				<lightning-combobox label="Select an object" value={selectedObject} options={objects}
+					onchange={handleChange}></lightning-combobox>
+
+			</lightning-layout-item>
+			<lightning-layout-item size="2">
+			</lightning-layout-item>
+			<lightning-layout-item size="3">
+				<lightning-combobox label="Picklist Fields" value={selectedField} options={picklistFields}
+					onchange={handleFieldChange}></lightning-combobox>
+				<lightning-combobox name="picklist" label="Select a picklist value" value={selectedValue}
+					onchange={handleValueChange} options={picklistValues}></lightning-combobox>
+			</lightning-layout-item>
+			<lightning-layout-item size="2">
+			</lightning-layout-item>
+		</lightning-layout>
+		<lightning-button-icon icon-name="utility:refresh" slot="actions" class="slds-p-around_medium" title="Refresh"
+			onclick={refreshHandler}></lightning-button-icon>
+		<lightning-button slot="actions" label="Send List Email" onclick={sendEmailHandler}></lightning-button>
+
+
+	</lightning-card>
+	<lightning-card>
+		<template if:true={isData}>
+			<div class="slds-box">
+				<lightning-datatable data={oppList} columns={COLS} key-field="Id" onrowselection={handleRowSelection}>
+				</lightning-datatable>
+			</div>
+		</template>
+		<template if:false={isData}>
+			<p style="font-size: 15px;text-align: center;font-weight: 500;">Please select an Object</p>
+		</template>
+	</lightning-card>
+	<template if:true={sendAction}>
+		<section role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="modal-heading-01"
+			class="slds-modal slds-fade-in-open slds-modal_medium">
+			<div class="slds-modal__container">
+				<div class="slds-modal__header">
+					<h1 id="modal-heading-01" class="slds-modal__title slds-hyphenate">Modal header</h1>
+				</div>
+				<div class="slds-modal__content slds-p-around_medium" id="modal-content-id-1">
+					<div class="slds-form-element slds-form-element_horizontal slds-form-element_1-col">
+						<label class="slds-form-element__label" for="to">To</label>
+						<div class="slds-form-element__control">
+							<lightning-input type="text" value={toAddress} disabled></lightning-input>
+						</div>
+					</div>
+
+					<div class="slds-form-element">
+						<label class="slds-form-element__label" for="subject"> </label>
+						<div class="slds-form-element__control">
+							<input
+                        type="text"
+                        name="subject"
+                        id="subject"
+                        value={subject}
+                        placeholder="Subject..."
+                        class="slds-input"
+                        onchange={handleSubjectChange}
+
+                    />
+                </div>
+						</div>
+
+						<div class="slds-form-element">
+							<div class="slds-form-element__control slds-var-p-top_small">
+								<lightning-input-rich-text value={body} onchange={handleBodyChange}>
+								</lightning-input-rich-text>
+							</div>
+						</div>
+
+						<div if:true={fileData} style="float:left;padding:15px;">
+							<lightning-pill label={fileName} onremove={handleRemove}>
+								<lightning-icon icon-name="doctype:attachment" alternative-text="Account">
+								</lightning-icon>
+							</lightning-pill>
+						</div>
+
+					</div>
+					<div class="slds-modal__footer">
+						<div class="slds-grid slds-grid_align-end slds-var-p-around_x-small">
+							<div class="slds-col slds-var-p-right_x-small slds-var-p-bottom_x-small slds-is-relative">
+								<!-- Pop over -->
+								<section if:true={wantToUploadFile} aria-describedby="dialog-body-id-108"
+									aria-labelledby="dialog-heading-id-3"
+									class="slds-popover slds-popover_walkthrough slds-nubbin_bottom slds-is-absolute popover"
+									role="dialog">
+									<button
+                        class="
+                            slds-button slds-button_icon slds-button_icon-small
+                            slds-float_right
+                            slds-popover__close
+                            slds-button_icon-inverse
+                        "
+                        title="Close dialog"
+                    >
+                        <lightning-button-icon
+                            variant="bare-inverse"
+                            size="small"
+                            onclick={toggleFileUpload}
+                            icon-name="utility:close"
+                            alternative-text="close"
+                        ></lightning-button-icon>
+                        <span class="slds-assistive-text">Close</span>
+                    </button>
+									<header class="slds-popover__header slds-p-vertical_medium">
+										<h2 id="dialog-heading-id-3" class="slds-text-heading_medium">Upload Files</h2>
+									</header>
+									<div class="slds-popover__body" id="dialog-body-id-108">
+										<lightning-input type="file" label="Select File"
+											onchange={handleFileInputChange}></lightning-input>
+									</div>
+								</section>
+								<!-- Pop over -->
+
+								<lightning-button-icon icon-name="utility:attach" onclick={toggleFileUpload}
+									alternative-text="Attach File" title="Attach_File">
+								</lightning-button-icon>
+							</div>
+							<lightning-button variant="brand outline" label="Cancel" onclick={offModal}
+								class="slds-p-around_x-small"></lightning-button>
+							<lightning-button variant="brand" label="Send" onclick={sendEmail}
+								class="slds-p-around_x-small"></lightning-button>
+						</div>
+					</div>
+				</div>
+		</section>
+		<div class="slds-backdrop slds-backdrop_open" role="presentation"></div>
+	</template>
+</template>
+
+============================================================================================================================
+
+import { LightningElement,track,wire } from 'lwc';
+import getSObject from '@salesforce/apex/mytestingexamplemethod.getSObject';
+import getPicklistFields from '@salesforce/apex/mytestingexamplemethod.getSObjectFields';
+import getPicklistValues from '@salesforce/apex/mytestingexamplemethod.getPicklistFieldValues';
+import getFieldData from '@salesforce/apex/mytestingexamplemethod.getFieldData';
+import sendEmail from '@salesforce/apex/TestEmails.sendEmail';  
+import{ShowToastEvent}from'lightning/platformShowToastEvent';
+export default class SendEmailsFromAnyObject extends LightningElement {
+ objects = [];
+    selectedObject;
+    picklistFields = [];
+    selectedField;
+    picklistValues = [];
+    selectedValue;
+    oppList=[]
+    isData=false
+    COLS=[  
+    {label:'Name',fieldName:'Name'},  
+    {label:'Email',fieldName:'Email__c'},  
+ ]; 
+
+    toAddress
+    recepitentsIds=[]
+    subject=''
+    body=''
+    sendAction=false
+     @track fileData;
+     @track fileName;
+
+    wantToUploadFile = false;
+
+    @wire(getSObject)
+    wiredSObject({ error, data }) {
+        if (data) {
+            this.objects = data.map((obj) => ({
+                value: obj.apiName,
+                label: obj.label,
+            }));
+        } else if (error) {
+            console.log(error);
+        }
+    }
+
+    handleChange(event) {
+        this.isData=true
+        this.selectedObject = event.detail.value;
+        this.selectedField = null; // reset selected field
+        this.selectedValue = null; // reset selected value
+        getPicklistFields({ objectName: this.selectedObject })
+            .then((result) => {
+                this.picklistFields = result.map((field) => {
+                    console.log('field.picklistValues:', field.picklistValues);
+                    return {
+                        value: field.apiName,
+                        label: field.label,
+                        options: field.picklistValues
+                            ? field.picklistValues.map((picklistValue) => ({
+                                  value: picklistValue.value,
+                                  label: picklistValue.label,
+                              }))
+                            : [],
+                    };
+                });
+            })
+            .catch((error) => {
+                console.log(error);
+            });
+
+            getFieldData({objectName:this.selectedObject,fieldName:this.selectedField,Value: this.selectedValue})
+        .then(result=>{
+            this.oppList=result.map(opp => ({...opp, checked: false}));
+            console.log('Field Data',result)
+           
+              
+        })
+        .catch(error=>{
+            console.error(error)
+        })
+    }
+
+    handleFieldChange(event) {
+    this.selectedField = event.detail.value;
+    getPicklistValues({ objectName: this.selectedObject, fieldName: this.selectedField })
+        .then((result) => {
+            this.picklistValues = result.map((value) => ({ label: value, value: value }));
+        })
+        .catch((error) => {
+            console.error(error);
+        });
+}
+
+
+    handleValueChange(event) {
+        this.selectedValue = event.detail.value;
+        getFieldData({objectName:this.selectedObject,fieldName:this.selectedField,Value: this.selectedValue})
+        .then(result=>{
+            this.oppList=result.map(opp => ({...opp, checked: false}));
+            console.log('Field Data',result)
+           
+              
+        })
+        .catch(error=>{
+            console.error(error)
+        })
+    }
+
+
+
+
+    //Email
+
+    refreshHandler(){
+        this.selectedField=''
+        this.selectedValue=''
+         this.oppList = this.oppList.map((account) => {
+            if (this.recepitentsIds.includes(account.Id)) {
+                account.isChecked = false;
+            }
+            return account;
+        });
+        this.recepitentsIds = [];
+       
+        this.template.querySelector('lightning-datatable').selectedRows = [];
+
+         getFieldData({objectName:this.selectedObject,fieldName:this.selectedField,Value: this.selectedValue})
+        .then(result=>{
+            this.oppList=result.map(opp => ({...opp, checked: false}));
+            console.log('Field Data',result)
+           
+              
+        })
+        .catch(error=>{
+            console.error(error)
+        })
+    }
+
+     handleRowSelection(event) {
+        this.recepitentsIds = event.detail.selectedRows.map((row) => row.Email__c);
+    }
+
+    toggleFileUpload() {
+        this.wantToUploadFile = !this.wantToUploadFile;
+    }
+
+    handleFileInputChange(event) {
+        const file = event.detail.files[0];
+        if(file != null){
+          this.fileName = file.name;
+        this.fileData = file;
+        console.log(' this.fileName', this.fileName)
+        console.log(' this.filedata', this.fileData)
+        this.wantToUploadFile = false;
+        }
+        
+    }
+
+
+     offModal(){
+    this.sendAction=false
+  }
+
+    
+    sendEmailHandler(){
+      if(this.template.querySelector("lightning-datatable").getSelectedRows().length>0){
+         
+        this.sendAction=true
+         if(this.template.querySelector("lightning-datatable").getSelectedRows().length == 1){
+           this.toAddress = this.template.querySelector("lightning-datatable").getSelectedRows().length+''+' recipient'
+         }else{
+           this.toAddress = this.template.querySelector("lightning-datatable").getSelectedRows().length+''+' recipients'
+         }
+        
+      }
+      else{
+        alert('Please select members')
+      }
+    }
+
+     handleRowSelection(event) {
+        this.recepitentsIds = event.detail.selectedRows.map((row) => row.Email__c);
+    }
+
+    handleSubjectChange(event){
+      this.subject = event.target.value
+      console.log(this.subject)
+    }
+
+    handleBodyChange(event){
+      this.body= event.target.value
+      console.log(this.body)
+    }
+
+    sendEmail(){
+      if(!this.fileData){
+     
+      sendEmail({toAddressesIds:this.recepitentsIds,subject:this.subject,body:this.body,fileName:null,base64Data:null})
+      .then(()=>{
+        this.sendAction=false
+        this.dispatchEvent(
+        newShowToastEvent({
+        title:'Success',
+        message:'Emailsentsuccessfully',
+        variant:'success'
+      })
+    );
+        console.log('success')
+      })
+      .catch(error=>{
+        this.dispatchEvent(
+        newShowToastEvent({
+        title:'Error',
+        message:error.body.message,
+        variant:'error'
+      })
+      );
+        console.error(error)
+      })
+      return;
+      }
+
+      constreader=newFileReader();
+      reader.readAsDataURL(this.fileData);
+      reader.onloadend=()=>{
+      constbase64Data=reader.result.split(',')[1];
+      sendEmail({toAddressesIds:this.recepitentsIds,subject:this.subject,body:this.body,fileName:this.fileName,base64Data:base64Data})
+      .then(()=>{
+        this.sendAction=false
+        this.dispatchEvent(
+        newShowToastEvent({
+        title:'Success',
+        message:'Emailsentsuccessfully',
+        variant:'success'
+      })
+    );
+        console.log('success')
+      })
+      .catch(error=>{
+        this.dispatchEvent(
+        newShowToastEvent({
+        title:'Error',
+        message:error.body.message,
+        variant:'error'
+      })
+      );
+        console.error(error)
+      })
+      }
+      
+    }
+
+
+
+    handleRemove(){
+      this.fileData=''
+    }
+
+}
+
+===================================================================================================================================
